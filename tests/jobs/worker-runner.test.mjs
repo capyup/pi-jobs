@@ -36,7 +36,7 @@ function fakeSpawn({ stdout = [], stderr = [], code = 0, onSpawn } = {}) {
   };
 }
 
-test("runWorkerAttempt captures terminal assistant events and stdout/stderr artifacts", async () => {
+test("runWorkerAttempt captures terminal assistant events without retaining raw stdout by default", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-worker-runner-"));
   const paths = makePaths(root);
   const terminal = JSON.stringify({ type: "message_end", message: { role: "assistant", stopReason: "stop" } }) + "\n";
@@ -51,7 +51,8 @@ test("runWorkerAttempt captures terminal assistant events and stdout/stderr arti
 
   assert.equal(result.status, "success");
   assert.equal(result.sawTerminalAssistantMessage, true);
-  assert.match(await fs.readFile(paths.stdoutPath, "utf-8"), /message_end/);
+  assert.match(await fs.readFile(paths.stdoutPath, "utf-8"), /Raw stdout capture disabled/);
+  assert.doesNotMatch(await fs.readFile(paths.stdoutPath, "utf-8"), /message_end/);
   assert.equal(await fs.readFile(paths.stderrPath, "utf-8"), "warn");
 });
 
@@ -207,7 +208,7 @@ test("runWorkerAttempt drains stdout emitted after terminal SIGTERM before close
 
   assert.equal(result.status, "success");
   assert.deepEqual(signals, ["SIGTERM"]);
-  assert.match(await fs.readFile(paths.stdoutPath, "utf-8"), /after-term/);
+  assert.match(await fs.readFile(paths.stdoutPath, "utf-8"), /Raw stdout capture disabled/);
   assert.equal(result.stdoutMalformedLines, 1);
 });
 
@@ -360,7 +361,7 @@ test("runWorkerAttempt treats terminal stopReason error as runtime failure", asy
   assert.match(result.error, /stopReason=error/);
 });
 
-test("runWorkerAttempt awaits ordered stdout and stderr artifact writes", async () => {
+test("runWorkerAttempt awaits stderr writes while raw stdout retention is disabled", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-worker-runner-writes-"));
   const paths = makePaths(root);
   const terminal = JSON.stringify({ type: "message_end", message: { role: "assistant", stopReason: "stop" } }) + "\n";
@@ -374,6 +375,23 @@ test("runWorkerAttempt awaits ordered stdout and stderr artifact writes", async 
   });
 
   assert.equal(await fs.readFile(paths.stderrPath, "utf-8"), "abc");
+  assert.match(await fs.readFile(paths.stdoutPath, "utf-8"), /Raw stdout capture disabled/);
+});
+
+test("runWorkerAttempt can retain raw stdout when explicitly enabled", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-worker-runner-raw-stdout-"));
+  const paths = makePaths(root);
+  const terminal = JSON.stringify({ type: "message_end", message: { role: "assistant", stopReason: "stop" } }) + "\n";
+
+  await runWorkerAttempt({
+    job: makeJob(),
+    attemptId: "t001-a1",
+    attemptIndex: 1,
+    paths,
+    env: { PI_JOBS_CAPTURE_STDOUT: "1" },
+    spawnImpl: fakeSpawn({ stdout: ["first\n", terminal, "last\n"], code: 0 }),
+  });
+
   assert.match(await fs.readFile(paths.stdoutPath, "utf-8"), /first\n.*message_end.*last/s);
 });
 

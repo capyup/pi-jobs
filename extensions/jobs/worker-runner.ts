@@ -56,6 +56,11 @@ function tail(text: string, max = 4000): string {
   return text.length <= max ? text : text.slice(text.length - max);
 }
 
+function shouldCaptureRawStdout(env: NodeJS.ProcessEnv | undefined): boolean {
+  const value = env?.PI_JOBS_CAPTURE_STDOUT ?? process.env.PI_JOBS_CAPTURE_STDOUT;
+  return /^(1|true|yes|on)$/i.test(value ?? "");
+}
+
 function destroyUnendedStdio(proc: SpawnedProcessLike): void {
   try { proc.stdout.destroy?.(); } catch {}
   try { proc.stderr.destroy?.(); } catch {}
@@ -79,6 +84,7 @@ export async function runWorkerAttempt(input: RunWorkerAttemptInput): Promise<At
   const activityState = createWorkerActivityState();
   const telemetryState = createStdoutTelemetryState();
   const workerEventsPath = workerEventsPathForAttempt(input.paths.attemptDir);
+  const captureRawStdout = shouldCaptureRawStdout(input.env);
 
   const queueAppend = (filePath: string, text: string, stream: "stdout" | "stderr") => {
     const append = () => fs.appendFile(filePath, text, "utf-8").catch((error) => {
@@ -121,7 +127,11 @@ export async function runWorkerAttempt(input: RunWorkerAttemptInput): Promise<At
   }), "utf-8");
   await fs.writeFile(input.paths.workerLogPath, "", "utf-8");
   await fs.writeFile(input.paths.stderrPath, "", "utf-8");
-  await fs.writeFile(input.paths.stdoutPath, "", "utf-8");
+  await fs.writeFile(
+    input.paths.stdoutPath,
+    captureRawStdout ? "" : "Raw stdout capture disabled by default. Set PI_JOBS_CAPTURE_STDOUT=1 to retain full worker JSONL. Telemetry is stored in worker-events.jsonl.\n",
+    "utf-8",
+  );
   await fs.writeFile(workerEventsPath, "", "utf-8");
 
   const args = ["--no-extensions", "--extension", JOB_WORKER_RUNTIME_ENTRYPOINT, "--mode", "json", "-p", "--session", sessionPath];
@@ -231,7 +241,7 @@ export async function runWorkerAttempt(input: RunWorkerAttemptInput): Promise<At
 
     proc.stdout.on("data", (chunk: Buffer | string) => {
       const text = chunk.toString();
-      queueAppend(input.paths.stdoutPath, text, "stdout");
+      if (captureRawStdout) queueAppend(input.paths.stdoutPath, text, "stdout");
       stdoutBuffer += text;
       const lines = stdoutBuffer.split("\n");
       stdoutBuffer = lines.pop() ?? "";

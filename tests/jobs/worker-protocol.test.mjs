@@ -30,14 +30,12 @@ test("validateJobReport rejects wrong job id and malformed evidence", () => {
   assert.match(result.errors.join("\n"), /evidence\[0\]\.value/);
 });
 
-test("worker prompts require worker.md and job-report.json", () => {
+test("worker prompts make reports optional and focus on durable work", () => {
   const system = buildWorkerSystemPrompt();
-  assert.match(system, /job-report\.json|job_report/);
-  assert.match(system, /only completion protocol/i);
-  // The system prompt must explicitly call out the thinking-only failure mode
-  // so the model knows ending with only thinking content fails the job.
-  assert.match(system, /thinking-only/i);
-  assert.match(system, /no job report/i);
+  assert.match(system, /job_report/);
+  assert.match(system, /not the definition of success/i);
+  assert.match(system, /hidden thinking block/i);
+  assert.doesNotMatch(system, /ONLY completion protocol/i);
 
   const prompt = buildWorkerPrompt({
     job: { id: "t001", name: "demo", prompt: "Do it", cwd: "/tmp" },
@@ -48,7 +46,7 @@ test("worker prompts require worker.md and job-report.json", () => {
   assert.match(prompt, /Worker log path: \/tmp\/worker\.md/);
   assert.match(prompt, /Job report path: \/tmp\/job-report\.json/);
   assert.match(prompt, /"jobId": "t001"/);
-  // Per-job body must mention the submission protocol and the no-thinking-only rule.
-  assert.match(prompt, /Submission protocol/);
-  assert.match(prompt, /thinking-only/i);
+  // Per-job body must mention optional reporting rather than a hard submission gate.
+  assert.match(prompt, /Completion notes/);
+  assert.match(prompt, /optional/i);
 });

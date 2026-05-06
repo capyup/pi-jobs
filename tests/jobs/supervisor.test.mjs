@@ -104,7 +104,7 @@ test("executeSupervisedJobs emits live updates while jobs run", async () => {
 
   assert.equal(result.batch.status, "success");
   assert.ok(updates.length >= 4);
-  assert.match(updates[0].text, /JOBS running · jobs · 0\/2/);
+  assert.match(updates[0].text, /JOBS running · jobs · 0✓ 0✗ 0⊘ 0◐ 2· \/ 2/);
   assert.ok(updates.some((snapshot) => snapshot.text.includes("/jobs-ui ")));
   assert.ok(updates.some((snapshot) => snapshot.text.includes("◐  t001")));
   assert.ok(updates.some((snapshot) => snapshot.text.includes("Inspect one")));
@@ -132,7 +132,7 @@ test("executeSupervisedJobs emits heartbeat updates during quiet workers", async
 
   assert.equal(result.batch.status, "success");
   assert.ok(updates.length >= 4);
-  assert.ok(updates.some((snapshot) => /JOBS running · jobs · \d+\/1 · \d+s/.test(snapshot.text)));
+  assert.ok(updates.some((snapshot) => /JOBS running · jobs · \d+✓ \d+✗ \d+⊘ \d+◐ \d+· \/ 1 · \d+s/.test(snapshot.text)));
 });
 
 test("executeSupervisedJobs creates batch artifacts before cwd launch failures", async () => {
@@ -159,7 +159,7 @@ test("executeSupervisedJobs creates batch artifacts before cwd launch failures",
   });
 
   assert.equal(result.batch.status, "error");
-  assert.match(updates[0].text, /JOBS running · jobs · 0\/1/);
+  assert.match(updates[0].text, /JOBS running · jobs · 0✓ 0✗ 0⊘ 0◐ 1· \/ 1/);
   assert.equal(await fs.stat(path.join(result.batch.batchDir, "batch.json")).then(() => true), true);
   assert.equal(result.jobs[0].failureKind, "launch_error");
 });
@@ -449,7 +449,7 @@ test("executeSupervisedJobs final result text shows the per-job table with finis
   assert.match(result.text, /rerun failed: \/jobs-ui rerun failed /);
 });
 
-test("executeSupervisedJobs shows 'no job report' when worker exits without writing job-report.json", async () => {
+test("executeSupervisedJobs treats missing job report as warning when worker completed", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-supervisor-no-report-"));
   const result = await executeSupervisedJobs({
     jobs: [{ id: "ch09_ch10", name: "Content QA MICRO102 ch09-ch10", prompt: "do" }],
@@ -477,12 +477,11 @@ test("executeSupervisedJobs shows 'no job report' when worker exits without writ
     },
   });
 
-  assert.equal(result.batch.status, "error");
-  assert.equal(result.jobs[0].failureKind, "worker_incomplete");
-  assert.match(result.jobs[0].workerReport.errors.join("\n"), /No job report submitted/);
-  assert.match(result.text, /✗\s+ch09_ch10\s+Content QA MICRO102 ch09-ch10 · no job report/);
-  // worker_incomplete is parent-retryable by default; the test pins maxAttempts=1 so it stays at one attempt.
-  assert.equal(result.jobs[0].retryability, "retryable");
+  assert.equal(result.batch.status, "success");
+  assert.equal(result.jobs[0].failureKind, "none");
+  assert.match(result.jobs[0].workerReport.warnings.join("\n"), /No job report submitted/);
+  assert.match(result.text, /✓\s+ch09_ch10/);
+  assert.equal(result.jobs[0].retryability, "not_retryable");
 });
 
 test("executeSupervisedJobs fails exit-0 workers that produce no terminal event or job report", async () => {
@@ -514,7 +513,7 @@ test("executeSupervisedJobs fails exit-0 workers that produce no terminal event 
   assert.equal(result.batch.status, "error");
   assert.equal(result.jobs[0].finalStatus, "error");
   assert.equal(result.jobs[0].failureKind, "worker_incomplete");
-  assert.match(result.jobs[0].workerReport.errors.join("\n"), /No job report submitted/);
+  assert.match(result.jobs[0].workerReport.warnings.join("\n"), /No job report submitted/);
 });
 
 test("executeSupervisedJobs live snapshot shows running icon, not stale ✗, while a retry is in flight", async () => {

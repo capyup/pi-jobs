@@ -27,9 +27,9 @@ test("deriveJobFinalStatus maps runtime abort to aborted", () => {
   );
 });
 
-test("deriveJobFinalStatus rejects runtime, worker, acceptance, and audit failures", () => {
+test("deriveJobFinalStatus rejects runtime, blocking worker, acceptance, and audit failures", () => {
   assert.equal(deriveJobFinalStatus({ runtime: "error", workerReport: "completed", acceptance: "passed", auditIntegrity: "ok" }), "error");
-  assert.equal(deriveJobFinalStatus({ runtime: "success", workerReport: "partial", acceptance: "passed", auditIntegrity: "ok" }), "error");
+  assert.equal(deriveJobFinalStatus({ runtime: "success", workerReport: "blocked", acceptance: "passed", auditIntegrity: "ok" }), "error");
   assert.equal(deriveJobFinalStatus({ runtime: "success", workerReport: "completed", acceptance: "failed", auditIntegrity: "ok" }), "error");
   assert.equal(deriveJobFinalStatus({ runtime: "success", workerReport: "completed", acceptance: "passed", auditIntegrity: "failed" }), "error");
 });

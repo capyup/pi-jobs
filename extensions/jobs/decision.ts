@@ -31,8 +31,9 @@ export interface DeriveFinalOutcomeInput {
 
 function blockingGateFor(input: DeriveFinalOutcomeInput): BlockingGate {
   if (input.runtime.status === "aborted" || input.runtime.status !== "success") return "runtime";
-  if (input.workerReport.status !== "completed") return "protocol";
   if (input.acceptance.status === "failed" || input.acceptance.status === "pending") return "acceptance";
+  if (input.workerReport.status === "blocked" || input.workerReport.status === "error") return "protocol";
+  if (input.workerReport.status !== "completed" && input.acceptance.status === "skipped" && input.runtime.sawTerminalAssistantMessage === false) return "protocol";
   if (input.auditIntegrity !== undefined && input.auditIntegrity !== "ok") return "audit";
   return "none";
 }

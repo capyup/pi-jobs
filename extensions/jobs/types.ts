@@ -290,10 +290,17 @@ export function deriveJobFinalStatus(input: DeriveJobStatusInput): JobFinalStatu
   if (runtimeStatus !== "success") return "error";
 
   const workerStatus = workerReportStatusOf(input.workerReport);
-  if (workerStatus !== "completed") return "error";
+  if (workerStatus === "blocked" || workerStatus === "error") return "error";
 
   const acceptanceStatus = acceptanceStatusOf(input.acceptance);
   if (acceptanceStatus === "failed" || acceptanceStatus === "pending") return "error";
+
+  if (
+    workerStatus !== "completed"
+    && acceptanceStatus === "skipped"
+    && typeof input.runtime === "object"
+    && input.runtime.sawTerminalAssistantMessage === false
+  ) return "error";
 
   if (input.auditIntegrity !== undefined && input.auditIntegrity !== "ok") return "error";
 

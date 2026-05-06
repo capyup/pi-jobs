@@ -39,7 +39,7 @@ test("deriveFinalOutcome preserves runtime failure as the blocking gate", () => 
 test("deriveFinalOutcome separates protocol and acceptance gates", () => {
   const protocol = deriveFinalOutcome({
     runtime: runtimeSuccess,
-    workerReport: emptyWorkerReport("invalid"),
+    workerReport: emptyWorkerReport("error"),
     protocolKind: "protocol_error",
     acceptance: emptyAcceptance("skipped"),
   });
@@ -55,4 +55,17 @@ test("deriveFinalOutcome separates protocol and acceptance gates", () => {
   assert.equal(acceptance.blockingGate, "acceptance");
   assert.equal(acceptance.failureKind, "acceptance_failed");
   assert.equal(acceptance.retryDecision.retryability, "not_retryable");
+});
+
+test("deriveFinalOutcome does not require a job report when runtime and acceptance passed", () => {
+  const outcome = deriveFinalOutcome({
+    runtime: runtimeSuccess,
+    workerReport: emptyWorkerReport("not_submitted"),
+    protocolKind: "worker_incomplete",
+    acceptance: passedAcceptance,
+  });
+
+  assert.equal(outcome.finalStatus, "success");
+  assert.equal(outcome.blockingGate, "none");
+  assert.equal(outcome.failureKind, "none");
 });

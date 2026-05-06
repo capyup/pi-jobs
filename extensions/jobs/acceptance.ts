@@ -204,7 +204,8 @@ export async function evaluateAcceptance(input: EvaluateAcceptanceInput): Promis
   }
 
   if (contract.minReportSummaryChars !== undefined && (input.report?.summary.length ?? 0) < contract.minReportSummaryChars) {
-    checks.push({ name: "minReportSummaryChars", status: "failed", message: `Report summary is shorter than ${contract.minReportSummaryChars} chars.` });
+    warnings.push(`Report summary is shorter than ${contract.minReportSummaryChars} chars.`);
+    checks.push({ name: "minReportSummaryChars", status: "warning", message: `Report summary is shorter than ${contract.minReportSummaryChars} chars.` });
   }
 
   addRegexChecks(checks, "workerLog", workerLog, contract.requiredOutputRegex, contract.forbiddenOutputRegex);

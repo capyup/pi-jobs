@@ -34,14 +34,15 @@ test("fake child completed scenario succeeds", async () => {
   assert.equal(result.jobs[0].workerReport.status, "completed");
 });
 
-test("fake child blocked and invalid scenarios become protocol/worker errors", async () => {
+test("fake child blocked reports fail while invalid reports are warnings", async () => {
   const blocked = await runScenario("blocked");
   assert.equal(blocked.batch.status, "error");
   assert.equal(blocked.jobs[0].workerReport.status, "blocked");
 
   const invalid = await runScenario("invalid-json");
-  assert.equal(invalid.batch.status, "error");
-  assert.equal(invalid.jobs[0].failureKind, "protocol_error");
+  assert.equal(invalid.batch.status, "success");
+  assert.equal(invalid.jobs[0].failureKind, "none");
+  assert.match(invalid.jobs[0].workerReport.warnings.join("\n"), /not valid JSON/);
 });
 
 test("fake child provider transient scenario is classified", async () => {

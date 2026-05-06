@@ -198,7 +198,8 @@ function snapshotHeading(batch: BatchArtifact, jobs: JobArtifact[], mode: Snapsh
   const total = jobs.length;
   const elapsedSuffix = elapsed ? ` · ${elapsed}` : "";
   if (mode === "running") {
-    return `JOBS running · ${batchHeading(batch)} · ${counts.done}/${total}${elapsedSuffix}`;
+    const parts = [`${counts.success}✓`, `${counts.error}✗`, `${counts.aborted}⊘`, `${counts.running}◐`, `${counts.queued}·`];
+    return `JOBS running · ${batchHeading(batch)} · ${parts.join(" ")} / ${total}${elapsedSuffix}`;
   }
   const parts: string[] = [];
   if (counts.success) parts.push(`${counts.success}✓`);
@@ -307,8 +308,14 @@ function colorHeading(theme: SnapshotTheme, batch: BatchArtifact, jobs: JobArtif
   const heading = paint(theme, "accent", batchHeading(batch));
   const elapsedSuffix = elapsed ? ` ${sep} ${paint(theme, "muted", elapsed)}` : "";
   if (mode === "running") {
-    const progress = `${counts.done}/${total}`;
-    return `${jobsLabel} ${verb} ${sep} ${heading} ${sep} ${progress}${elapsedSuffix}`;
+    const progress = [
+      paint(theme, "success", `${counts.success}✓`),
+      paint(theme, "error", `${counts.error}✗`),
+      paint(theme, "warning", `${counts.aborted}⊘`),
+      paint(theme, "accent", `${counts.running}◐`),
+      paint(theme, "muted", `${counts.queued}·`),
+    ].join(" ");
+    return `${jobsLabel} ${verb} ${sep} ${heading} ${sep} ${progress} ${paint(theme, "muted", `/ ${total}`)}${elapsedSuffix}`;
   }
   const parts: string[] = [];
   if (counts.success) parts.push(paint(theme, "success", `${counts.success}✓`));
@@ -598,15 +605,13 @@ async function settleJob(input: {
   const protocolKind = classifyProtocolFailure(reportResult.errors);
   const workerReport = reportResult.ok
     ? { status: reportResult.report!.status, reportPath: paths.reportPath, report: reportResult.report, errors: [], warnings: [] }
-    : { status: "invalid" as const, reportPath: paths.reportPath, errors: reportResult.errors, warnings: [] };
+    : { status: "not_submitted" as const, reportPath: paths.reportPath, errors: [], warnings: reportResult.errors };
   // Audit is "available" when we either captured a git baseline diff or observed at
   // least one worker event from stdout telemetry. The latter proves we listened to the
   // worker's tool calls, so an empty write set really means "no writes happened" rather
   // than "we have no idea what the worker did."
   const auditAvailable = changedFileAudit.available || workerEvents.length > 0 || telemetryWritePaths.length > 0;
-  const acceptance = reportResult.ok && reportResult.report!.status === "completed"
-    ? await evaluateAcceptance({ contract: input.job.acceptance, cwd: input.job.cwd, workerLog, report: reportResult.report, writeEvidence: accumulatedWriteEvidence, writeAuditAvailable: auditAvailable })
-    : emptyAcceptance("skipped");
+  const acceptance = await evaluateAcceptance({ contract: input.job.acceptance, cwd: input.job.cwd, workerLog, report: reportResult.ok ? reportResult.report : undefined, writeEvidence: accumulatedWriteEvidence, writeAuditAvailable: auditAvailable });
   const outcome = deriveFinalOutcome({ runtime: { ...runtime, error: runtime.error }, workerReport, protocolKind, acceptance });
   const { finalStatus, failureKind, retryDecision } = outcome;
 
