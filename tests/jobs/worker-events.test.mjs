@@ -95,7 +95,7 @@ test("runWorkerAttempt creates worker event channel path and exposes env", async
       return proc;
     },
   });
-  assert.ok(!seenArgs.includes("--no-extensions"));
+  assert.ok(seenArgs.includes("--no-extensions"));
   assert.ok(seenArgs.includes("--extension"));
   assert.ok(seenArgs.some((arg) => String(arg).endsWith("extensions/jobs/job-worker-runtime.ts")));
   assert.ok(seenArgs.includes("--session"));

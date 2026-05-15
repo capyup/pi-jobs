@@ -7,7 +7,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 import { readJsonFile, readJsonlTolerant } from "../../extensions/jobs/audit-log.ts";
-import { executeSupervisedJobs } from "../../extensions/jobs/supervisor.ts";
+import { executeSupervisedJobs, renderColoredSnapshot } from "../../extensions/jobs/supervisor.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -70,7 +70,8 @@ test("executeSupervisedJobs writes success batch/job/attempt artifacts", async (
 
   assert.equal(result.batch.status, "success");
   assert.equal(result.batch.summary.success, 1);
-  assert.match(result.text, /JOBS done · /);
+  assert.match(result.text, /^JOBS done · 1\/1 job/);
+  assert.doesNotMatch(result.text.split("\n")[0], /· jobs ·/);
   assert.match(result.text, /\/jobs-ui /);
 
   const job = await readJsonFile(path.join(result.batch.batchDir, "jobs", "t001.json"));
@@ -81,6 +82,40 @@ test("executeSupervisedJobs writes success batch/job/attempt artifacts", async (
 
   const events = await readJsonlTolerant(path.join(result.batch.batchDir, "events.jsonl"));
   assert.ok(events.some((event) => event.type === "batch_finished"));
+});
+
+test("executeSupervisedJobs keeps nonstandard tool names in the heading", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-supervisor-tool-heading-"));
+  const result = await executeSupervisedJobs({
+    jobs: [{ name: "demo", prompt: "Do it" }],
+    concurrency: 1,
+  }, { cwd: root, toolName: "jobs_plan" }, { runAttempt: successAttempt });
+
+  assert.match(result.text, /^JOBS done · jobs_plan · 1\/1 job/);
+});
+
+test("executeSupervisedJobs passes resolved worker extension settings to attempts", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-supervisor-worker-ext-"));
+  await fs.mkdir(path.join(root, ".pi"), { recursive: true });
+  await fs.writeFile(path.join(root, ".pi", "jobs-settings.json"), JSON.stringify({
+    workerExtensions: { include: [" ./local-ext.ts ", "npm:extra", "./local-ext.ts", "~/kept.ts"] },
+  }), "utf-8");
+  const seen = [];
+
+  const result = await executeSupervisedJobs({
+    jobs: [{ name: "demo", prompt: "Do it" }],
+    concurrency: 1,
+  }, { cwd: root, toolName: "jobs" }, {
+    runAttempt: async (input) => {
+      seen.push({ extraExtensions: input.extraExtensions });
+      return successAttempt(input);
+    },
+  });
+
+  assert.equal(result.batch.status, "success");
+  assert.deepStrictEqual(seen, [{
+    extraExtensions: [path.resolve(root, "./local-ext.ts"), "npm:extra", "~/kept.ts"],
+  }]);
 });
 
 test("executeSupervisedJobs emits live updates while jobs run", async () => {
@@ -104,7 +139,9 @@ test("executeSupervisedJobs emits live updates while jobs run", async () => {
 
   assert.equal(result.batch.status, "success");
   assert.ok(updates.length >= 4);
-  assert.match(updates[0].text, /JOBS running · jobs · 0✓ 0✗ 0⊘ 0◐ 2· \/ 2/);
+  assert.match(updates[0].text, /^JOBS running · 1 active \/ 2/);
+  assert.ok(updates[0].text.includes("◐  t001"));
+  assert.doesNotMatch(updates[0].text.split("\n")[0], /✓|✗|⊘|◐/);
   assert.ok(updates.some((snapshot) => snapshot.text.includes("/jobs-ui ")));
   assert.ok(updates.some((snapshot) => snapshot.text.includes("◐  t001")));
   assert.ok(updates.some((snapshot) => snapshot.text.includes("Inspect one")));
@@ -132,7 +169,7 @@ test("executeSupervisedJobs emits heartbeat updates during quiet workers", async
 
   assert.equal(result.batch.status, "success");
   assert.ok(updates.length >= 4);
-  assert.ok(updates.some((snapshot) => /JOBS running · jobs · \d+✓ \d+✗ \d+⊘ \d+◐ \d+· \/ 1 · \d+s/.test(snapshot.text)));
+  assert.ok(updates.some((snapshot) => /JOBS running · \d+ active \/ 1 · \d+s/.test(snapshot.text)));
 });
 
 test("executeSupervisedJobs creates batch artifacts before cwd launch failures", async () => {
@@ -159,7 +196,7 @@ test("executeSupervisedJobs creates batch artifacts before cwd launch failures",
   });
 
   assert.equal(result.batch.status, "error");
-  assert.match(updates[0].text, /JOBS running · jobs · 0✓ 0✗ 0⊘ 0◐ 1· \/ 1/);
+  assert.match(updates[0].text, /^JOBS running · 1 active \/ 1/);
   assert.equal(await fs.stat(path.join(result.batch.batchDir, "batch.json")).then(() => true), true);
   assert.equal(result.jobs[0].failureKind, "launch_error");
 });
@@ -440,7 +477,10 @@ test("executeSupervisedJobs final result text shows the per-job table with finis
   });
 
   assert.equal(result.batch.status, "error");
-  assert.match(result.text, /^JOBS error · jobs · 2✓ 1✗ \/ 3/);
+  assert.match(result.text, /^JOBS error · 1 failed \/ 3/);
+  const colored = renderColoredSnapshot({ fg: (_role, text) => text }, result.batch, result.jobs, "error");
+  assert.match(colored, /^JOBS error · 1 failed \/ 3/);
+  assert.doesNotMatch(colored.split("\n")[0], /✓|✗|⊘|◐/);
   assert.match(result.text, /✓\s+ch01/);
   assert.match(result.text, /✗\s+ch02/);
   assert.match(result.text, /✓\s+ch03/);
@@ -678,7 +718,7 @@ test("executeSupervisedJobs final result text uses 'done' verb when every job su
   }, { cwd: root, toolName: "jobs" }, { runAttempt: successAttempt });
 
   assert.equal(result.batch.status, "success");
-  assert.match(result.text, /^JOBS done · jobs · 2✓ \/ 2/);
+  assert.match(result.text, /^JOBS done · 2\/2 jobs/);
   assert.match(result.text, /✓\s+ch01/);
   assert.match(result.text, /✓\s+ch02/);
   assert.doesNotMatch(result.text, /rerun failed:/);

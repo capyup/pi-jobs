@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { renderPromptFile } from "./prompt-loader.ts";
 import type { NormalizedJobSpec, JobDeliverable, JobEvidence, JobReport } from "./types.ts";
 
 const REPORT_STATUSES = new Set(["completed", "partial", "blocked", "error"]);
@@ -104,32 +105,7 @@ export async function readJobReport(reportPath: string, expected?: { jobId?: str
 }
 
 export function buildWorkerSystemPrompt(): string {
-  return [
-    "You are a job agent supervised by the root pi job runtime.",
-    "",
-    "## Completion model",
-    "",
-    "Your primary job is to complete the assigned work on disk. Prefer durable files and clear edits over elaborate reporting.",
-    "",
-    "At the end, submit a short `job_report` when practical. If the report tool is unavailable or you are out of time, do not contort the work just to satisfy reporting: leave the filesystem in the best completed state you can. The supervisor can validate required paths directly.",
-    "",
-    "Report policy: when an acceptance contract is present and passes, the report is optional audit evidence; when no acceptance contract is present, finish with either a valid completed report or visible terminal completion text.",
-    "",
-    "Avoid ending with only a hidden thinking block. If you can, finish with either a brief visible summary or a `job_report` call so the parent has a clean terminal signal.",
-    "",
-    "## Best-effort final checklist",
-    "",
-    "- [ ] Every required output artifact named in the user prompt actually exists on disk.",
-    "- [ ] The last assistant message has visible text or a `job_report` call when possible.",
-    "- [ ] If you submit a report, include concise deliverables and evidence; do not spend excessive time on report prose.",
-    "",
-    "## Working rules",
-    "",
-    "- You may read, write, edit, and run commands needed for the assigned work.",
-    "- Avoid filling your context with huge file dumps or command output. Prefer targeted `read` ranges, `grep`, summaries, and writing durable notes to files. If earlier tool history is compacted, continue from the filesystem and artifacts rather than re-reading everything.",
-    "- Handle recoverable work errors yourself before reporting final status; record what you retried in `internalRetries`.",
-    "- Do not spawn nested `job` / `jobs` / `jobs_plan` workers.",
-  ].join("\n");
+  return renderPromptFile("worker-system.md");
 }
 
 export function buildWorkerPrompt(input: {
@@ -138,41 +114,18 @@ export function buildWorkerPrompt(input: {
   workerLogPath: string;
   reportPath: string;
 }): string {
-  const reportExample = {
-    schemaVersion: 1,
+  const reportExampleJson = renderPromptFile("worker-report-example.json", {
     jobId: input.job.id,
     attemptId: input.attemptId,
-    status: "completed",
-    summary: "Briefly summarize what was completed.",
-    deliverables: [{ path: "relative/or/absolute/path", kind: "file", description: "What changed" }],
-    evidence: [{ kind: "text", value: "Verification evidence" }],
-    internalRetries: [],
-    userActionRequired: null,
-    error: null,
-  };
+  });
 
-  return [
-    `Job id: ${input.job.id}`,
-    `Attempt id: ${input.attemptId}`,
-    `Job name: ${input.job.name}`,
-    `Worker log path: ${input.workerLogPath}`,
-    `Job report path: ${input.reportPath}`,
-    "",
-    "## Job prompt",
-    "",
-    input.job.prompt,
-    "",
-    "## Completion notes",
-    "",
-    "Complete the assigned work first. A structured report is useful audit evidence. If this job has no explicit acceptance contract, you must leave either a valid completed report or visible terminal completion text.",
-    "",
-    `If convenient, call the \`job_report\` tool with the JSON shape below. If \`job_report\` is unavailable, you may write the same JSON to: ${input.reportPath}`,
-    `You may also write a short human-readable note to: ${input.workerLogPath}`,
-    "Make sure every required output artifact named in the job prompt above actually exists on disk.",
-    "",
-    "If you cannot finish the work, prefer a report with status `partial`, `blocked`, or `error`, but do not fabricate completion evidence.",
-    "",
-    "job-report.json shape:",
-    JSON.stringify(reportExample, null, 2),
-  ].join("\n");
+  return renderPromptFile("worker-prompt.md", {
+    jobId: input.job.id,
+    attemptId: input.attemptId,
+    jobName: input.job.name,
+    workerLogPath: input.workerLogPath,
+    reportPath: input.reportPath,
+    jobPrompt: input.job.prompt,
+    reportExampleJson,
+  });
 }

@@ -36,6 +36,7 @@ import { buildAttemptRecord, runWorkerAttempt, type AttemptRuntimeResult, type R
 import { observedWritePaths, readWorkerEvents, workerEventsPathForAttempt } from "./worker-events.ts";
 import { readJobReport } from "./worker-protocol.ts";
 import { auditableWriteEvidence, mergeWriteEvidence, writeEvidenceFromGitDiff, writeEvidenceFromTelemetry } from "./write-evidence.ts";
+import { loadJobsSettings, resolveWorkerExtensionIncludes } from "./settings.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -171,10 +172,20 @@ function formatElapsed(ms: number): string {
   return `${hours}h ${minutes % 60}m`;
 }
 
-function batchHeading(batch: BatchArtifact): string {
-  const toolName = String(batch.toolName);
-  const meta = ["job", "jobs", "job", "jobs"].includes(toolName) ? undefined : toolName;
-  return meta ?? "jobs";
+function batchHeading(batch: BatchArtifact): string | undefined {
+  const toolName = String(batch.toolName ?? "").trim();
+  if (!toolName || toolName === "job" || toolName === "jobs") return undefined;
+  return toolName;
+}
+
+function jobsNoun(count: number): string {
+  return count === 1 ? "job" : "jobs";
+}
+
+function finalStatusSummary(counts: ReturnType<typeof countJobLifecycle>, total: number, mode: SnapshotMode): string {
+  if (mode === "done") return `${counts.success}/${total} ${jobsNoun(total)}`;
+  if (mode === "error") return `${counts.error} failed / ${total}`;
+  return `${counts.aborted} aborted / ${total}`;
 }
 
 type SnapshotMode = "running" | "done" | "error" | "aborted";
@@ -196,17 +207,12 @@ function snapshotHeading(batch: BatchArtifact, jobs: JobArtifact[], mode: Snapsh
   const counts = countJobLifecycle(jobs);
   const elapsed = snapshotElapsed(batch, mode);
   const total = jobs.length;
-  const elapsedSuffix = elapsed ? ` · ${elapsed}` : "";
-  if (mode === "running") {
-    const parts = [`${counts.success}✓`, `${counts.error}✗`, `${counts.aborted}⊘`, `${counts.running}◐`, `${counts.queued}·`];
-    return `JOBS running · ${batchHeading(batch)} · ${parts.join(" ")} / ${total}${elapsedSuffix}`;
-  }
-  const parts: string[] = [];
-  if (counts.success) parts.push(`${counts.success}✓`);
-  if (counts.error) parts.push(`${counts.error}✗`);
-  if (counts.aborted) parts.push(`${counts.aborted}⊘`);
-  if (parts.length === 0) parts.push("0");
-  return `JOBS ${mode} · ${batchHeading(batch)} · ${parts.join(" ")} / ${total}${elapsedSuffix}`;
+  const parts = [`JOBS ${mode}`];
+  const heading = batchHeading(batch);
+  if (heading) parts.push(heading);
+  parts.push(mode === "running" ? `${counts.running} active / ${total}` : finalStatusSummary(counts, total, mode));
+  if (elapsed) parts.push(elapsed);
+  return parts.join(" · ");
 }
 
 function buildSnapshotText(batch: BatchArtifact, jobs: JobArtifact[], mode: SnapshotMode, extras: string[] = []): string {
@@ -304,24 +310,20 @@ function colorHeading(theme: SnapshotTheme, batch: BatchArtifact, jobs: JobArtif
   const verbRole = mode === "running" ? "warning" : mode === "done" ? "success" : mode === "error" ? "error" : "warning";
   const verbText = theme.bold ? theme.bold(mode) : mode;
   const verb = paint(theme, verbRole, verbText);
-  const heading = paint(theme, "accent", batchHeading(batch));
-  const elapsedSuffix = elapsed ? ` ${sep} ${paint(theme, "muted", elapsed)}` : "";
+  const heading = batchHeading(batch);
+  const parts = [`${jobsLabel} ${verb}`];
+  if (heading) parts.push(paint(theme, "accent", heading));
   if (mode === "running") {
-    const progress = [
-      paint(theme, "success", `${counts.success}✓`),
-      paint(theme, "error", `${counts.error}✗`),
-      paint(theme, "warning", `${counts.aborted}⊘`),
-      paint(theme, "accent", `${counts.running}◐`),
-      paint(theme, "muted", `${counts.queued}·`),
-    ].join(" ");
-    return `${jobsLabel} ${verb} ${sep} ${heading} ${sep} ${progress} ${paint(theme, "muted", `/ ${total}`)}${elapsedSuffix}`;
+    parts.push(`${paint(theme, "accent", String(counts.running))} ${paint(theme, "muted", `active / ${total}`)}`);
+  } else if (mode === "done") {
+    parts.push(`${paint(theme, "success", `${counts.success}/${total}`)} ${paint(theme, "muted", jobsNoun(total))}`);
+  } else if (mode === "error") {
+    parts.push(`${paint(theme, "error", String(counts.error))} ${paint(theme, "muted", `failed / ${total}`)}`);
+  } else {
+    parts.push(`${paint(theme, "warning", String(counts.aborted))} ${paint(theme, "muted", `aborted / ${total}`)}`);
   }
-  const parts: string[] = [];
-  if (counts.success) parts.push(paint(theme, "success", `${counts.success}✓`));
-  if (counts.error) parts.push(paint(theme, "error", `${counts.error}✗`));
-  if (counts.aborted) parts.push(paint(theme, "warning", `${counts.aborted}⊘`));
-  if (parts.length === 0) parts.push(paint(theme, "muted", "0"));
-  return `${jobsLabel} ${verb} ${sep} ${heading} ${sep} ${parts.join(" ")} ${paint(theme, "muted", `/ ${total}`)}${elapsedSuffix}`;
+  if (elapsed) parts.push(paint(theme, "muted", elapsed));
+  return parts.join(` ${sep} `);
 }
 
 function colorExtra(theme: SnapshotTheme, extra: string): string {
@@ -523,6 +525,7 @@ async function settleJob(input: {
   writeAuditChangedFiles: Set<string>;
   ctx: SupervisorContext;
   deps: Required<Pick<SupervisorDependencies, "runAttempt">> & SupervisorDependencies;
+  extraExtensions: string[];
 }): Promise<{ artifact: JobArtifact }> {
   const jobArtifact = await readJsonFile<JobArtifact>(jobArtifactPath(input.batch, input.job.id));
   const attemptId = `${input.job.id}-a${input.attemptIndex}`;
@@ -561,6 +564,7 @@ async function settleJob(input: {
       signal: input.ctx.signal,
       fallbackModel: input.ctx.model,
       fallbackThinking: input.ctx.thinking,
+      extraExtensions: input.extraExtensions,
       onActivity: (activity) => recordJobActivity({ batch: input.batch, activity, nextSeq: input.nextSeq, deps: input.deps }),
     });
   } catch (error) {
@@ -674,6 +678,8 @@ async function mapWithDynamicConcurrency<TInput, TOutput>(items: TInput[], getCo
 }
 
 export async function executeSupervisedJobs(params: JobsToolParams, ctx: SupervisorContext, deps: SupervisorDependencies = {}): Promise<SupervisedJobsResult> {
+  const settings = loadJobsSettings(ctx.cwd);
+  const extraExtensions = resolveWorkerExtensionIncludes(ctx.cwd, settings.workerExtensions.include);
   const normalized = normalizeJobsRun(params, ctx.cwd);
   // Jobs with write-boundary contracts run in parallel like everything else. Each job's
   // git-status diff is filtered to that job's allowedWritePaths zone, so concurrent writes
@@ -696,7 +702,6 @@ export async function executeSupervisedJobs(params: JobsToolParams, ctx: Supervi
   const retryPolicy = normalizeRetryPolicy(params.retry);
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const throttle = new ThrottleController(normalizeThrottlePolicy(params.throttle, schedulingConcurrency), schedulingConcurrency);
-  await emitSupervisorUpdate(batch, deps);
   const stopHeartbeat = startSupervisorHeartbeat(batch, deps);
 
   let jobResults: JobArtifact[];
@@ -718,7 +723,7 @@ export async function executeSupervisedJobs(params: JobsToolParams, ctx: Supervi
           return aborted;
         }
         if (ctx.signal?.aborted) break;
-        const result = await settleJob({ batch, job, attemptIndex, nextSeq, writeAuditBaseline, writeAuditChangedFiles, ctx, deps: { ...deps, runAttempt } });
+        const result = await settleJob({ batch, job, attemptIndex, nextSeq, writeAuditBaseline, writeAuditChangedFiles, ctx, deps: { ...deps, runAttempt }, extraExtensions });
         latest = result.artifact;
         const lastAttempt = latest.attempts.at(-1);
         if (!lastAttempt) break;

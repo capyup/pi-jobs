@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "jobId": "{{jobId}}",
+  "attemptId": "{{attemptId}}",
+  "status": "completed",
+  "summary": "Briefly summarize what was completed.",
+  "deliverables": [
+    {
+      "path": "relative/or/absolute/path",
+      "kind": "file",
+      "description": "What changed"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "text",
+      "value": "Verification evidence"
+    }
+  ],
+  "internalRetries": [],
+  "userActionRequired": null,
+  "error": null
+}

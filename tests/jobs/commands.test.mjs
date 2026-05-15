@@ -17,6 +17,13 @@ test("JOBS_START_GUIDANCE contains key guidance markers", () => {
   assert.ok(JOBS_START_GUIDANCE.includes("jobs_plan"));
   assert.ok(JOBS_START_GUIDANCE.includes("parent-tool experience synchronous"));
   assert.ok(JOBS_START_GUIDANCE.includes("Do not try to create nested jobs"));
+  assert.ok(JOBS_START_GUIDANCE.includes("Do not use jobs for ordinary main-quest work"));
+  assert.ok(JOBS_START_GUIDANCE.includes("parallelism is unnecessary"));
+  assert.ok(JOBS_START_GUIDANCE.includes("same files"));
+  assert.ok(JOBS_START_GUIDANCE.includes("learn/debug process details"));
+  assert.ok(JOBS_START_GUIDANCE.includes("explicitly requests parallel jobs/agents"));
+  assert.ok(JOBS_START_GUIDANCE.includes("separable research/reporting/audit/review"));
+  assert.ok(JOBS_START_GUIDANCE.includes("inline jobs is a <=4 ad-hoc escape hatch"));
 });
 
 // ── registerJobsStartCommand ──

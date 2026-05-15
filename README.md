@@ -8,6 +8,7 @@ Do not maintain the live runtime copy by syncing from `pi-tools` anymore.
 ## What lives here
 
 - `extensions/jobs/` - the job extension and supervisor runtime modules
+- `extensions/jobs/prompts/` - dynamically loaded guidance, tool prompt text, and worker prompt templates for easy local debugging
 - `tests/jobs/` - focused Node tests for status, audit artifacts, supervisor behavior, retry, throttle, UI helpers, and smoke fixtures
 - `scripts/jobs-audit-smoke.sh` - end-to-end temp-workspace smoke validation
 - `docs/specs/` - job design specs, including `jobs-supervisor-v3.md`
@@ -18,8 +19,10 @@ Do not maintain the live runtime copy by syncing from `pi-tools` anymore.
 Jobs Supervisor V3 treats each job as a supervised worker attempt.
 
 - The root process owns planning, scheduling, retry classification, acceptance checks, and synthesis.
-- Fan-out is explicit. The primary fan-out tool is `jobs_plan`: a compact `matrix + promptTemplate + acceptanceTemplate` payload that the extension expands locally into N supervised jobs. Inline `jobs` is a small-batch escape hatch (<=4 jobs, <=8000 prompt bytes) and rejects oversized payloads with a pointer to `jobs_plan`.
-- Concurrency is explicit when capped: omitting `concurrency` runs every supplied leaf job concurrently; root agents should split large batches into explicit waves of about 4-6 jobs unless the user asks for full concurrency. Dynamic throttling is opt-in via `throttle.enabled: true`.
+- Use job workers narrowly: not for ordinary main-quest work the root agent can handle well, not when parallelism is unnecessary, not when workers could touch the same files or need tight shared state, and not when the root agent should directly learn/debug the process details.
+- Use job workers when the user explicitly requests parallel jobs/agents, when the work would consume lots of context and only final deliverables matter, or for separable research/reporting/audit/review directions.
+- Fan-out is explicit. Prefer `jobs_plan`: a compact `matrix + promptTemplate + acceptanceTemplate` payload that the extension expands locally into N supervised jobs. Inline `jobs` is a small-batch escape hatch (<=4 jobs, <=8000 prompt bytes) and rejects oversized payloads with a pointer to `jobs_plan`.
+- Concurrency is explicit when capped: omitting `concurrency` runs every supplied leaf job concurrently; root agents should split large batches into explicit `jobs_plan` waves of about 4-6 jobs unless the user asks for full concurrency. Dynamic throttling is opt-in via `throttle.enabled: true`.
 - Each worker is a full child `pi --mode json -p --session <attempt>/session.jsonl` process with its own session/compaction boundary; the parent only supervises stdout JSONL, artifacts, and the structured report protocol.
 - Workers handle recoverable work-level errors themselves and should submit `job-report.json` via the child-only `job_report` tool or file fallback when practical.
 - Parent retry is reserved for launch/session/provider transient failures and no-signal worker incompletion.
@@ -42,11 +45,23 @@ Batch artifacts live under:
 
 ## Settings UI
 
-Use `/jobs-settings` to inspect or update the focused policy controls:
+Use `/jobs-settings` to inspect or update the focused policy controls. File-only settings live in `.pi/jobs-settings.json`:
+
+```json
+{
+  "workerExtensions": {
+    "include": [
+      "./extensions/provider-oauth.ts",
+      "npm:@example/pi-worker-provider"
+    ]
+  }
+}
+```
 
 - report policy: fixed default, with acceptance report is optional audit evidence; without acceptance require report or visible terminal completion;
 - jobs_plan wave guidance: default enabled, about 4-6 jobs per explicit wave for large batches;
-- sync-first guidance: default enabled, keeps the extension oriented around blocking parent-tool runs and avoids scheduler/background/steer/resume complexity.
+- sync-first guidance: default enabled, keeps the extension oriented around blocking parent-tool runs and avoids scheduler/background/steer/resume complexity;
+- worker extensions: worker-only allowlist; job agents load `job-worker-runtime.ts` plus only `workerExtensions.include` entries. The default empty list loads no regular/discovered extensions into job agents, so provider, OAuth, or custom-model extensions required by worker models must be listed here. Nested jobs remain blocked by the `PI_CHILD_TYPE=job-worker` guard even when the jobs extension is allowlisted.
 
 ## Artifact UI
 
@@ -83,6 +98,8 @@ pi install /Users/lucas/Developer/pi-jobs
 Pi will load the extension from:
 
 - `extensions/jobs/index.ts`
+
+Prompt and template text is intentionally kept outside TypeScript under `extensions/jobs/prompts/`. Those files are dynamically loaded from disk with `import.meta.url`-relative paths, so local edits can be tested by restarting/reloading pi without rebuilding a bundled prompt string.
 
 ## Local validation
 

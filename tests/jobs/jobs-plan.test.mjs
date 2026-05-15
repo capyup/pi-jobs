@@ -183,7 +183,7 @@ test("buildPlanStartingText shows compact preview before the supervisor takes ov
 
 test("decoratePlanResultText appends plan path and synthesis hint", () => {
   const text = decoratePlanResultText(
-    "JOBS done · 2✓ / 2",
+    "JOBS done · 2/2 jobs",
     "/repo/.pi/jobs/batch-1/plan.json",
     chapterPlan(),
   );

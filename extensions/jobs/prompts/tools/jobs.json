@@ -1,0 +1,17 @@
+{
+  "description": "Launch a small inline batch of supervised job workers (escape hatch for <=4 ad-hoc jobs). For repeated/templated fan-out across many items, use jobs_plan instead.",
+  "promptSnippet": "Inline jobs() is a small-batch escape hatch (<=4 jobs). Use jobs_plan for fan-out.",
+  "promptGuidelines": [
+    "Use jobs narrowly: only when supervised leaf workers are a better fit than direct root-agent work.",
+    "Do not use jobs for ordinary main-quest work the root agent can handle well directly, when parallelism is unnecessary, when workers may touch the same files, or when tight shared state is required.",
+    "Do not use jobs when the root agent benefits from directly learning/debugging process details.",
+    "Use jobs when the user explicitly requests parallel jobs/agents, when the work would consume lots of context and only final deliverables matter, or for separable research/reporting/audit/review directions.",
+    "Prefer jobs_plan over jobs for any repeated/templated fan-out (every chapter, every report, every file).",
+    "jobs accepts at most 4 inline jobs and rejects payloads larger than 8000 prompt bytes; oversized inline calls fail fast and point you to jobs_plan.",
+    "For N>4 workers, never inline N full prompts as JSON. Use jobs_plan with a matrix + promptTemplate so the model never has to stream a giant tool-call argument.",
+    "For large batches, split work into explicit jobs_plan waves of about {{waveMin}}-{{waveMax}} jobs unless the user asks for full concurrency.",
+    "Do not add concurrency unless you intentionally want to cap this batch; omitted concurrency means all supplied jobs in that wave run concurrently.",
+    "Give every job a clear name and prompt; use acceptance contracts for required files, regexes, and write boundaries.",
+    "The root agent remains responsible for synthesis and for reading batch artifacts when needed."
+  ]
+}

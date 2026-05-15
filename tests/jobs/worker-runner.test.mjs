@@ -85,6 +85,7 @@ test("runWorkerAttempt launches a full child pi session with the worker runtime 
 
   assert.ok(capturedArgs.includes("--session"));
   assert.equal(capturedArgs[capturedArgs.indexOf("--session") + 1], paths.sessionPath);
+  assert.equal(capturedArgs[0], "--no-extensions");
   assert.ok(capturedArgs.includes("--extension"));
   assert.match(capturedArgs[capturedArgs.indexOf("--extension") + 1], /job-worker-runtime\.ts$/);
   assert.equal(capturedArgs.includes("--no-session"), false);
@@ -92,6 +93,41 @@ test("runWorkerAttempt launches a full child pi session with the worker runtime 
   assert.equal(capturedOptions.env.PI_CHILD_TYPE, "job-worker");
   assert.equal(capturedOptions.env.PI_JOB_REPORT_PATH, paths.reportPath);
   assert.match(await fs.readFile(path.join(paths.attemptDir, "worker-prompt.md"), "utf-8"), /Job id: t001/);
+});
+
+test("runWorkerAttempt allowlist isolation disables discovered extensions and appends extras", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-worker-allowlist-extensions-"));
+  const paths = makePaths(root);
+  let capturedArgs;
+  const terminal = JSON.stringify({ type: "message_end", message: { role: "assistant", stopReason: "stop" } }) + "\n";
+
+  await runWorkerAttempt({
+    job: makeJob(),
+    attemptId: "t001-a1",
+    attemptIndex: 1,
+    paths,
+    extraExtensions: ["/tmp/extra-one.ts", "npm:extra-two"],
+    spawnImpl: (_command, args) => {
+      capturedArgs = args;
+      const proc = new EventEmitter();
+      proc.stdout = new EventEmitter();
+      proc.stderr = new EventEmitter();
+      proc.kill = () => true;
+      setImmediate(() => {
+        proc.stdout.emit("data", terminal);
+        proc.emit("close", 0);
+      });
+      return proc;
+    },
+  });
+
+  assert.equal(capturedArgs[0], "--no-extensions");
+  const extensionIndexes = capturedArgs.reduce((indexes, arg, index) => arg === "--extension" ? [...indexes, index] : indexes, []);
+  assert.equal(extensionIndexes.length, 3);
+  assert.match(capturedArgs[extensionIndexes[0] + 1], /job-worker-runtime\.ts$/);
+  assert.equal(capturedArgs[extensionIndexes[1] + 1], "/tmp/extra-one.ts");
+  assert.equal(capturedArgs[extensionIndexes[2] + 1], "npm:extra-two");
+  assert.ok(capturedArgs.indexOf("--no-extensions") < extensionIndexes[0]);
 });
 
 test("runWorkerAttempt passes @worker-prompt path with spaces unchanged", async () => {

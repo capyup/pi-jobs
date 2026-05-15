@@ -135,12 +135,14 @@ export async function runWorkerAttempt(input: RunWorkerAttemptInput): Promise<At
   );
   await fs.writeFile(workerEventsPath, "", "utf-8");
 
-  const args = ["--extension", JOB_WORKER_RUNTIME_ENTRYPOINT, "--mode", "json", "-p", "--session", sessionPath];
+  const args = ["--no-extensions"];
+  args.push("--extension", JOB_WORKER_RUNTIME_ENTRYPOINT);
   if (input.extraExtensions) {
     for (const ext of input.extraExtensions) {
       args.push("--extension", ext);
     }
   }
+  args.push("--mode", "json", "-p", "--session", sessionPath);
   if (input.fallbackModel) args.push("--model", input.fallbackModel);
   if (input.fallbackThinking) args.push("--thinking", input.fallbackThinking);
   args.push("--append-system-prompt", systemPromptPath, `@${workerPromptPath}`);

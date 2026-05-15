@@ -1,22 +1,20 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { renderPromptFile } from "./prompt-loader.ts";
 import { DEFAULT_JOBS_SETTINGS, formatJobsSettings, formatReportPolicy, formatWaveGuidance, loadJobsSettings, saveJobsSettings, type JobsSettings } from "./settings.ts";
 
-export const JOBS_START_GUIDANCE = [
-  "Use `job` / `jobs` for the next stretch of work when isolated job workers would help.",
-  "",
-  "- The root agent stays responsible for planning, orchestration, and synthesis.",
-  "- Use `jobs` when work can be split into parallel leaf job workers.",
-  "- Use `job` when exactly one isolated job worker is enough.",
-  `- Report policy: ${formatReportPolicy()}.`,
-  `- jobs_plan guidance: ${formatWaveGuidance(DEFAULT_JOBS_SETTINGS)}.`,
-  "- Keep the parent-tool experience synchronous: do not add scheduler, background notification, steer, or resume complexity.",
-  "- Give jobs clear names and acceptance criteria when useful for audit.",
-  "- Do not try to create nested jobs from inside a job worker.",
-].join("\n");
+export function getJobsStartGuidance(): string {
+  return renderPromptFile("jobs-start.md", {
+    reportPolicy: formatReportPolicy(),
+    waveGuidance: formatWaveGuidance(DEFAULT_JOBS_SETTINGS),
+  });
+}
+
+export const JOBS_START_GUIDANCE = getJobsStartGuidance();
 
 function buildJobsStartText(description: string): string {
+  const guidance = getJobsStartGuidance();
   const trimmed = description.trim();
-  return trimmed ? `${JOBS_START_GUIDANCE}\n\nUser request:\n${trimmed}` : JOBS_START_GUIDANCE;
+  return trimmed ? `${guidance}\n\nUser request:\n${trimmed}` : guidance;
 }
 
 export function registerJobsStartCommand(pi: ExtensionAPI): void {

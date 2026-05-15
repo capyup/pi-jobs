@@ -158,12 +158,23 @@ export interface JobsRunResultSummary {
 
 export function buildResultText(summary: JobsRunResultSummary): string {
   const headingStatus = summary.status === "success" ? "done" : summary.status;
-  const counts: string[] = [];
-  if (summary.success) counts.push(`${summary.success}✓`);
-  if (summary.error) counts.push(`${summary.error}✗`);
-  if (summary.aborted) counts.push(`${summary.aborted}⊘`);
-  if (counts.length === 0) counts.push("0 jobs");
-  const heading = `JOBS ${headingStatus} · ${counts.join(" ")} / ${summary.total}${summary.elapsed ? ` · ${summary.elapsed}` : ""}`;
+  const jobLabel = summary.total === 1 ? "job" : "jobs";
+  let headingCount: string;
+  switch (summary.status) {
+    case "success":
+      headingCount = `${summary.success}/${summary.total} ${jobLabel}`;
+      break;
+    case "error":
+      headingCount = `${summary.error} failed / ${summary.total}`;
+      break;
+    case "aborted":
+      headingCount = `${summary.aborted} aborted / ${summary.total}`;
+      break;
+    case "incomplete":
+      headingCount = `${summary.success} completed / ${summary.total}`;
+      break;
+  }
+  const heading = `JOBS ${headingStatus} · ${headingCount}${summary.elapsed ? ` · ${summary.elapsed}` : ""}`;
   return [
     heading,
     `/jobs-ui ${summary.batchId}`,

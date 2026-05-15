@@ -106,7 +106,9 @@ test("buildResultText points to batch artifacts", () => {
     summaryPath: "/tmp/project/.pi/jobs/batch-1/summary.md",
   });
 
-  assert.match(text, /JOBS error · 1✓ 1✗ 1⊘ \/ 3/);
+  const heading = text.split("\n")[0];
+  assert.equal(heading, "JOBS error · 1 failed / 3");
+  assert.doesNotMatch(heading, /[✓✗⊘◐]/);
   assert.match(text, /\/jobs-ui batch-1/);
   assert.match(text, /summary: \/tmp\/project\/\.pi\/jobs\/batch-1\/summary\.md/);
   assert.match(text, /rerun failed: \/jobs-ui rerun failed batch-1/);

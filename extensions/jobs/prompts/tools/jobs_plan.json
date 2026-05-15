@@ -1,0 +1,20 @@
+{
+  "description": "Launch a fan-out batch of supervised job workers from a compact matrix + promptTemplate. The extension expands the matrix locally into per-row prompts, acceptance contracts, write boundaries, and metadata, then runs them under the same audited supervisor as jobs. Use this for repeated/templated fan-out (every chapter, every report, every file).",
+  "promptSnippet": "Fan-out jobs via a small matrix + promptTemplate; the extension expands rows locally.",
+  "promptGuidelines": [
+    "Use jobs_plan narrowly for separable fan-out where supervised leaf workers are a better fit than direct root-agent work.",
+    "Do not use jobs_plan when parallelism is unnecessary, workers may touch the same files, tight shared state is required, or the root agent needs to learn/debug process details directly.",
+    "Use jobs_plan whenever the same prompt shape repeats across many independent items (chapters, reports, files, modules, tickets).",
+    "Keep matrix rows tiny: id + per-row vars only. Put long shared instructions in promptTemplate, not per row.",
+    "For large batches, prefer explicit waves of about {{waveMin}}-{{waveMax}} rows per jobs_plan call unless the user asks for full concurrency.",
+    "Omit concurrency when the parent/root agent has already split work into the desired wave; omitted concurrency means all matrix rows in this call run concurrently.",
+    "Reference row vars with {{key}} in promptTemplate, nameTemplate, cwdTemplate, acceptanceTemplate, and metadataTemplate.",
+    "An array-valued var splats into list fields when the entry is exactly {{key}} (e.g. allowedWritePaths: [\"{{allowedWritePaths}}\"]); inside a string template it joins with newlines.",
+    "Set acceptanceTemplate.allowedWritePaths to keep each agent on its own files; rows with disjoint paths can run in parallel.",
+    "Do NOT add `JOB_STATUS: completed` (or similar log-marker regexes) to acceptanceTemplate.requiredRegex / requiredReportRegex / requiredPaths.requiredRegex. Completion is determined by the structured job-report.json the worker submits, not by log markers; requiring such a marker only produces false negatives.",
+    "Do NOT list `job-report.json` or `worker.md` in acceptanceTemplate.requiredPaths - the supervisor writes those itself in the batch artifact directory, and they are not under the job's cwd.",
+    "Report policy: {{reportPolicy}}.",
+    "Prefer `requireDeliverablesEvidence: true` and `minReportSummaryChars` in acceptanceTemplate to enforce real completion proof; pair them with `allowedWritePaths` to scope writes per row.",
+    "Set synthesis.instructions when the root agent should summarize after the batch finishes."
+  ]
+}

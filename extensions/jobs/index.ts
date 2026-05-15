@@ -15,6 +15,7 @@ import { executeSupervisedJobs, renderColoredFromText, type SupervisedJobsResult
 import { listBatches, loadBatchDetail, renderAttemptDetailLines, renderBatchDetailLines, renderBatchListLines, renderJobDetailLines, renderJobsUiHelpLines, resolveBatchDir } from "./job-ui.ts";
 import { registerJobReportTool } from "./job-report-tool.ts";
 import { buildPlanStartingText, decoratePlanResultText, expandJobsPlan, validateJobsPlanInput, writePlanArtifact, type JobsPlanInput } from "./jobs-plan.ts";
+import { loadToolPrompt } from "./prompt-loader.ts";
 import { DEFAULT_JOBS_SETTINGS, formatReportPolicy } from "./settings.ts";
 import type { JobsToolParams } from "./types.ts";
 
@@ -276,17 +277,19 @@ export default function jobExtension(pi: ExtensionAPI) {
     },
   });
 
+  const toolPromptVars = {
+    reportPolicy: formatReportPolicy(),
+    waveMin: DEFAULT_JOBS_SETTINGS.waveGuidance.min,
+    waveMax: DEFAULT_JOBS_SETTINGS.waveGuidance.max,
+  };
+  const jobPromptText = loadToolPrompt("job", toolPromptVars);
+  const jobsPromptText = loadToolPrompt("jobs", toolPromptVars);
+  const jobsPlanPromptText = loadToolPrompt("jobs_plan", toolPromptVars);
+
   pi.registerTool({
     name: "job",
     label: "Job",
-    description: "Launch one supervised job worker with structured report, acceptance checks, audit artifacts, and strict parent retry boundaries.",
-    promptSnippet: "Launch one supervised job worker with a prompt, name, and optional acceptance contract.",
-    promptGuidelines: [
-      "Use job when exactly one isolated supervised job worker is useful.",
-      "Do not use job to fan out multiple workers; for repeated/templated fan-out call jobs_plan with a matrix and a promptTemplate.",
-      "Provide a clear name, concrete prompt, expected deliverables, and acceptance criteria when possible.",
-      `Report policy: ${formatReportPolicy()}.`,
-    ],
+    ...jobPromptText,
     parameters: JobParams,
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const { name, prompt, cwd, acceptance, metadata, concurrency, retry, throttle } = params as any;
@@ -309,17 +312,7 @@ export default function jobExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "jobs",
     label: "Jobs",
-    description: "Launch a small inline batch of supervised job workers (escape hatch for ≤4 ad-hoc jobs). For repeated/templated fan-out across many items, use jobs_plan instead.",
-    promptSnippet: "Inline jobs() is a small-batch escape hatch (≤4 jobs). Use jobs_plan for fan-out.",
-    promptGuidelines: [
-      "Prefer jobs_plan over jobs for any repeated/templated fan-out (every chapter, every report, every file).",
-      "jobs accepts at most 4 inline jobs and rejects payloads larger than 8000 prompt bytes; oversized inline calls fail fast and point you to jobs_plan.",
-      "For N>4 workers, never inline N full prompts as JSON. Use jobs_plan with a matrix + promptTemplate so the model never has to stream a giant tool-call argument.",
-      `For large batches, split work into explicit jobs_plan waves of about ${DEFAULT_JOBS_SETTINGS.waveGuidance.min}-${DEFAULT_JOBS_SETTINGS.waveGuidance.max} jobs unless the user asks for full concurrency.`,
-      "Do not add concurrency unless you intentionally want to cap this batch; omitted concurrency means all supplied jobs in that wave run concurrently.",
-      "Give every job a clear name and prompt; use acceptance contracts for required files, regexes, and write boundaries.",
-      "The root agent remains responsible for synthesis and for reading batch artifacts when needed.",
-    ],
+    ...jobsPromptText,
     parameters: JobsParams,
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const { jobs, concurrency, retry, throttle, acceptanceDefaults, parentBatchId, rerunOfJobIds } = params as any;
@@ -343,22 +336,7 @@ export default function jobExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "jobs_plan",
     label: "Jobs Plan",
-    description: "Launch a fan-out batch of supervised job workers from a compact matrix + promptTemplate. The extension expands the matrix locally into per-row prompts, acceptance contracts, write boundaries, and metadata, then runs them under the same audited supervisor as jobs. Use this for repeated/templated fan-out (every chapter, every report, every file).",
-    promptSnippet: "Fan-out jobs via a small matrix + promptTemplate; the extension expands rows locally.",
-    promptGuidelines: [
-      "Use jobs_plan whenever the same prompt shape repeats across many items (chapters, reports, files, modules, tickets).",
-      "Keep matrix rows tiny: id + per-row vars only. Put long shared instructions in promptTemplate, not per row.",
-      `For large batches, prefer explicit waves of about ${DEFAULT_JOBS_SETTINGS.waveGuidance.min}-${DEFAULT_JOBS_SETTINGS.waveGuidance.max} rows per jobs_plan call unless the user asks for full concurrency.`,
-      "Omit concurrency when the parent/root agent has already split work into the desired wave; omitted concurrency means all matrix rows in this call run concurrently.",
-      "Reference row vars with {{key}} in promptTemplate, nameTemplate, cwdTemplate, acceptanceTemplate, and metadataTemplate.",
-      "An array-valued var splats into list fields when the entry is exactly {{key}} (e.g. allowedWritePaths: [\"{{allowedWritePaths}}\"]); inside a string template it joins with newlines.",
-      "Set acceptanceTemplate.allowedWritePaths to keep each agent on its own files; rows with disjoint paths can run in parallel.",
-      "Do NOT add `JOB_STATUS: completed` (or similar log-marker regexes) to acceptanceTemplate.requiredRegex / requiredReportRegex / requiredPaths.requiredRegex. Completion is determined by the structured job-report.json the worker submits, not by log markers; requiring such a marker only produces false negatives.",
-      "Do NOT list `job-report.json` or `worker.md` in acceptanceTemplate.requiredPaths — the supervisor writes those itself in the batch artifact directory, and they are not under the job's cwd.",
-      `Report policy: ${formatReportPolicy()}.`,
-      "Prefer `requireDeliverablesEvidence: true` and `minReportSummaryChars` in acceptanceTemplate to enforce real completion proof; pair them with `allowedWritePaths` to scope writes per row.",
-      "Set synthesis.instructions when the root agent should summarize after the batch finishes.",
-    ],
+    ...jobsPlanPromptText,
     parameters: JobsPlanParams,
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       return runJobsPlan(pi, params as unknown as JobsPlanInput, signal, onUpdate, ctx);

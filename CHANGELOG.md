@@ -4,6 +4,20 @@ All notable changes to the `pi-jobs` supervised job runtime extension.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-15
+
+### Added
+- Worker extension allowlist via `.pi/jobs-settings.json` `workerExtensions.include`, with an empty default include list while still loading the internal `job-worker-runtime` extension.
+- Added support for dynamically loaded prompt files and template files under `extensions/jobs/prompts/`, backed by a prompt-loader.
+
+### Changed
+- Child workers now launch with `--no-extensions` plus the explicit allowlist for extension isolation, while preserving the `PI_CHILD_TYPE` nested-jobs guard.
+- Narrowed `job`, `jobs`, and `jobs_plan` guidance to reduce duplicate live UI and keep worker instructions focused.
+- Simplified JOBS headings in live, final, and fallback output by removing lifecycle glyph counters.
+
+### Fixed
+- Updated docs and tests for the worker extension allowlist, prompt loading, isolation behavior, and UI guidance changes.
+
 ## [0.2.0] - 2026-05-15
 
 ### Added

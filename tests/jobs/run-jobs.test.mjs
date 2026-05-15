@@ -326,32 +326,54 @@ test("normalizeJobsRun clamps concurrency to job count", () => {
 
 // ── buildResultText ──
 
+function firstResultHeading(text) {
+  return text.split("\n")[0];
+}
+
+function assertResultHeadingHasNoGlyphCounts(text) {
+  assert.doesNotMatch(firstResultHeading(text), /[✓✗⊘◐]/);
+}
+
 test("buildResultText for success batch", () => {
   const text = buildResultText({ batchId: "b1", batchDir: "/tmp/b1", status: "success", total: 3, success: 3, error: 0, aborted: 0 });
-  assert.ok(text.includes("JOBS done"));
-  assert.ok(text.includes("3✓ / 3"));
+  assert.strictEqual(firstResultHeading(text), "JOBS done · 3/3 jobs");
+  assertResultHeadingHasNoGlyphCounts(text);
   assert.ok(text.includes("/jobs-ui b1"));
+});
+
+test("buildResultText uses singular job label for one success", () => {
+  const text = buildResultText({ batchId: "b1", batchDir: "/tmp/b1", status: "success", total: 1, success: 1, error: 0, aborted: 0 });
+  assert.strictEqual(firstResultHeading(text), "JOBS done · 1/1 job");
+  assertResultHeadingHasNoGlyphCounts(text);
 });
 
 test("buildResultText for error batch", () => {
   const text = buildResultText({ batchId: "b2", batchDir: "/tmp/b2", status: "error", total: 3, success: 1, error: 1, aborted: 1 });
-  assert.ok(text.includes("JOBS error"));
-  assert.ok(text.includes("1✓ 1✗ 1⊘ / 3"));
+  assert.strictEqual(firstResultHeading(text), "JOBS error · 1 failed / 3");
+  assertResultHeadingHasNoGlyphCounts(text);
   assert.ok(text.includes("rerun failed: /jobs-ui rerun failed b2"));
+});
+
+test("buildResultText for aborted batch", () => {
+  const text = buildResultText({ batchId: "b6", batchDir: "/tmp/b6", status: "aborted", total: 3, success: 0, error: 0, aborted: 3 });
+  assert.strictEqual(firstResultHeading(text), "JOBS aborted · 3 aborted / 3");
+  assertResultHeadingHasNoGlyphCounts(text);
 });
 
 test("buildResultText for incomplete batch", () => {
   const text = buildResultText({ batchId: "b3", batchDir: "/tmp/b3", status: "incomplete", total: 2, success: 0, error: 0, aborted: 0 });
-  assert.ok(text.includes("JOBS incomplete"));
-  assert.ok(text.includes("0 jobs / 2"));
+  assert.strictEqual(firstResultHeading(text), "JOBS incomplete · 0 completed / 2");
+  assertResultHeadingHasNoGlyphCounts(text);
 });
 
 test("buildResultText includes elapsed time when provided", () => {
   const text = buildResultText({ batchId: "b4", batchDir: "/tmp/b4", status: "success", total: 1, success: 1, error: 0, aborted: 0, elapsed: "12s" });
-  assert.ok(text.includes("· 12s"));
+  assert.strictEqual(firstResultHeading(text), "JOBS done · 1/1 job · 12s");
+  assertResultHeadingHasNoGlyphCounts(text);
 });
 
 test("buildResultText includes summary path when provided", () => {
   const text = buildResultText({ batchId: "b5", batchDir: "/tmp/b5", status: "success", total: 1, success: 1, error: 0, aborted: 0, summaryPath: "/tmp/b5/summary.md" });
+  assertResultHeadingHasNoGlyphCounts(text);
   assert.ok(text.includes("summary: /tmp/b5/summary.md"));
 });
