@@ -144,7 +144,7 @@ function compactJobBlock(job: JobArtifact, idWidth: number, batch: BatchArtifact
   const meta = jobMetaLine(job, batch);
   if (meta) lines.push(meta);
   if (shouldShowTree(job)) {
-    lines.push(...renderActivitySummaryLines(job.activity ?? [], { maxItems: TREE_MAX_ITEMS, header: true, indent: TREE_INDENT }));
+    lines.push(...renderActivitySummaryLines(job.activity ?? [], { maxItems: TREE_MAX_ITEMS, indent: TREE_INDENT }));
   }
   return lines;
 }
@@ -269,7 +269,6 @@ function colorActivityTreeLines(theme: SnapshotTheme, items: JobActivityItem[]):
   const visible = items.slice(-TREE_MAX_ITEMS);
   if (visible.length === 0) return [];
   const lines: string[] = [];
-  lines.push(`${TREE_INDENT}${paint(theme, "muted", "┆ Thinking Steps · Summary")}`);
   for (let index = 0; index < visible.length; index += 1) {
     const item = visible[index]!;
     const connector = index === visible.length - 1 ? "└─" : "├─";

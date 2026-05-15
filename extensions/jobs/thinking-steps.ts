@@ -228,7 +228,7 @@ export function renderActivitySummaryLines(items: JobActivityItem[], options: { 
   const indent = options.indent ?? "";
   const visible = items.slice(-maxItems);
   if (visible.length === 0) return [];
-  const lines = options.header === false ? [] : [`${indent}┆ Thinking Steps · Summary`];
+  const lines: string[] = [];
   for (let index = 0; index < visible.length; index += 1) {
     const item = visible[index]!;
     const connector = index === visible.length - 1 ? "└─" : "├─";

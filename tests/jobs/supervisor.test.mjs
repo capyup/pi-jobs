@@ -658,8 +658,8 @@ test("executeSupervisedJobs renders per-job model/thinking meta and a thinking t
   assert.equal(result.batch.defaultModel, "anthropic/claude-opus-4-7");
   assert.equal(result.batch.defaultThinking, "xhigh");
   assert.match(result.text, /◊ anthropic\/claude-opus-4-7\/xhigh/);
-  // Failed job gets a thinking-steps tree
-  assert.match(result.text, /┆ Thinking Steps · Summary/);
+  // Failed job gets a thinking-steps tree without a summary header.
+  assert.doesNotMatch(result.text, /┆ Thinking Steps · Summary/);
   assert.match(result.text, /├─ /);
   assert.match(result.text, /└─ /);
   // Successful jobs omit the tree (only a single line)

@@ -49,8 +49,8 @@ const result = await executeSupervisedJobs({
 });
 
 assert.equal(result.jobs.length, 5);
-assert.equal(result.batch.summary.success, 2);
-assert.equal(result.batch.summary.error, 3);
+assert.equal(result.batch.summary.success, 3);
+assert.equal(result.batch.summary.error, 2);
 assert.ok(await fs.stat(path.join(result.batch.batchDir, "batch.json")));
 assert.ok(await fs.stat(path.join(result.batch.batchDir, "summary.md")));
 assert.ok(await fs.stat(path.join(result.batch.batchDir, "jobs", "t001.json")));

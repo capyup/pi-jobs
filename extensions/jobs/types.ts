@@ -295,12 +295,10 @@ export function deriveJobFinalStatus(input: DeriveJobStatusInput): JobFinalStatu
   const acceptanceStatus = acceptanceStatusOf(input.acceptance);
   if (acceptanceStatus === "failed" || acceptanceStatus === "pending") return "error";
 
-  if (
-    workerStatus !== "completed"
-    && acceptanceStatus === "skipped"
-    && typeof input.runtime === "object"
-    && input.runtime.sawTerminalAssistantMessage === false
-  ) return "error";
+  const hasAcceptanceGate = acceptanceStatus === "passed" || acceptanceStatus === "warning";
+  const hasVisibleTerminal = typeof input.runtime === "object" && input.runtime.sawTerminalAssistantMessage !== false;
+  const hasValidCompletedReport = workerStatus === "completed";
+  if (!hasAcceptanceGate && !hasValidCompletedReport && !hasVisibleTerminal) return "error";
 
   if (input.auditIntegrity !== undefined && input.auditIntegrity !== "ok") return "error";
 

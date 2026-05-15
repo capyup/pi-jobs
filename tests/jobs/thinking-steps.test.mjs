@@ -34,7 +34,6 @@ test("extractWorkerActivity emits deduped thinking and tool activity", () => {
   assert.match(tool?.detail ?? "", /\[REDACTED\]/);
   assert.equal(renderActivityCollapsedLine(tool), "│ Thinking ◇ Run echo secret ·");
   assert.deepEqual(renderActivitySummaryLines([first, tool]), [
-    "┆ Thinking Steps · Summary",
     "├─ ◫ Reviewing file specifics",
     "└─ ◇ Run echo secret",
   ]);

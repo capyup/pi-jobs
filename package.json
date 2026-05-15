@@ -1,24 +1,42 @@
 {
-  "name": "pi-jobs",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@capyup/pi-jobs",
+  "version": "0.2.0",
   "type": "module",
-  "description": "Local pi package for supervised job runtime.",
+  "description": "Supervised job runtime extension for pi with isolated workers, audit artifacts, and retry-aware orchestration.",
   "keywords": [
     "pi-package",
     "pi",
-    "job",
-    "jobs"
+    "pi-extension",
+    "jobs",
+    "supervised-jobs"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/capyup/pi-jobs"
+  },
+  "author": "capyup",
+  "license": "MIT",
+  "files": [
+    "extensions",
+    "docs",
+    "scripts",
+    "README.md",
+    "CHANGELOG.md",
+    "tsconfig.json"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "test": "node --test tests/jobs/*.mjs",
-    "smoke": "bash scripts/jobs-audit-smoke.sh"
+    "smoke": "bash scripts/jobs-audit-smoke.sh",
+    "experiments": "npx tsx experiments/run-all.ts",
+    "experiments:dry": "npx tsx experiments/run-all.ts --dry-run"
   },
   "peerDependencies": {
-    "@mariozechner/pi-agent-core": "*",
-    "@mariozechner/pi-ai": "*",
-    "@mariozechner/pi-coding-agent": "*",
-    "@mariozechner/pi-tui": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
     "@sinclair/typebox": "*"
   },
   "pi": {

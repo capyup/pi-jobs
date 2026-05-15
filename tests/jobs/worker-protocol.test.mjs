@@ -33,7 +33,8 @@ test("validateJobReport rejects wrong job id and malformed evidence", () => {
 test("worker prompts make reports optional and focus on durable work", () => {
   const system = buildWorkerSystemPrompt();
   assert.match(system, /job_report/);
-  assert.match(system, /not the definition of success/i);
+  assert.match(system, /optional audit evidence/i);
+  assert.match(system, /visible terminal completion text/i);
   assert.match(system, /hidden thinking block/i);
   assert.doesNotMatch(system, /ONLY completion protocol/i);
 
@@ -46,7 +47,7 @@ test("worker prompts make reports optional and focus on durable work", () => {
   assert.match(prompt, /Worker log path: \/tmp\/worker\.md/);
   assert.match(prompt, /Job report path: \/tmp\/job-report\.json/);
   assert.match(prompt, /"jobId": "t001"/);
-  // Per-job body must mention optional reporting rather than a hard submission gate.
+  // Per-job body must mention report-or-visible-terminal policy rather than a hard submission gate.
   assert.match(prompt, /Completion notes/);
-  assert.match(prompt, /optional/i);
+  assert.match(prompt, /visible terminal completion text/i);
 });

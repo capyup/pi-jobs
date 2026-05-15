@@ -11,10 +11,9 @@ Scope: `extensions/jobs`
 The root process is the supervisor. Each job reaches `success` only when all blocking gates pass:
 
 1. runtime outcome is successful;
-2. worker submits a valid `job-report.json` or `job_report` payload;
-3. worker report status is `completed`;
-4. acceptance checks pass or are explicitly skipped/warning-only;
-5. batch audit artifacts finalize with `auditIntegrity: "ok"`.
+2. if an acceptance contract exists, acceptance checks pass or are warning-only;
+3. if no acceptance contract exists, the worker has either a valid completed `job-report.json` / `job_report` payload or a visible terminal completion signal;
+4. batch audit artifacts finalize with `auditIntegrity: "ok"`.
 
 Legacy `JOB_STATUS` markers are only warning signals for old logs. They are not a completion protocol.
 
@@ -92,7 +91,7 @@ type JobReport = {
 };
 ```
 
-The worker prompt must state clearly that ending without `job_report`/`job-report.json` fails the job, even if file edits succeeded. Thinking-only final turns are `worker_incomplete` and are parent-retryable.
+The worker prompt must state clearly that reports are optional audit evidence when acceptance passes, but jobs without acceptance need either a completed report or visible terminal completion text. Thinking-only final turns with no report and no acceptance pass are `worker_incomplete` and are parent-retryable.
 
 ## API
 
@@ -147,7 +146,7 @@ type JobsPlanInput = {
 
 `jobs_plan` is the primary fan-out transport. The extension validates the input, expands the matrix locally into N full `JobSpecInput`s, and calls `executeSupervisedJobs` with the same artifact/audit/acceptance/retry/throttle behavior as `jobs`. It additionally writes `plan.json` next to `batch.json`.
 
-Concurrency is caller-controlled. If `concurrency` is omitted, there is no hidden supervisor cap: the scheduler starts all supplied leaf jobs concurrently (`jobs.length` or `matrix.length`). `concurrency: N` is an explicit local cap only. Dynamic throttling is opt-in (`throttle.enabled: true`); without it, the supervisor does not auto-reduce concurrency after failures. Root agents should split large jobs into multiple `jobs_plan` waves when they want phased execution or manual provider load control.
+Concurrency is caller-controlled. If `concurrency` is omitted, there is no hidden supervisor cap: the batch supervisor starts all supplied leaf jobs concurrently (`jobs.length` or `matrix.length`). `concurrency: N` is an explicit local cap only. Dynamic throttling is opt-in (`throttle.enabled: true`); without it, the supervisor does not auto-reduce concurrency after failures. Root agents should split large jobs into multiple `jobs_plan` waves when they want phased execution or manual provider load control, and should default to waves of about 4-6 jobs for large batches unless the user asks for full concurrency.
 
 ## `jobs_plan`
 
@@ -249,12 +248,12 @@ The parent does not retry by default for:
 Each attempt launches a full child Pi process, not an in-process pseudo-worker:
 
 ```text
-pi --mode json -p --session <attemptDir>/session.jsonl --no-extensions --extension job-worker-runtime.ts @<attemptDir>/worker-prompt.md
+pi --mode json -p --session <attemptDir>/session.jsonl --extension job-worker-runtime.ts @<attemptDir>/worker-prompt.md
 ```
 
 The child owns its own `AgentSession`, session file, provider retry, and Pi auto-compaction boundary. Root-session compaction does not mutate child context; the parent supervises the child by parsing stdout JSONL events and reading artifacts.
 
-`job-worker-runtime.ts` is intentionally tiny: it registers only the `job_report` tool. It does not register `job`, `jobs`, or `jobs_plan`, so children cannot recursively spawn more supervised workers through this runtime. The parent still passes `PI_JOB_ID`, `PI_JOB_ATTEMPT_ID`, `PI_JOB_REPORT_PATH`, and `PI_JOB_EVENTS_PATH` so the child can submit its structured report and telemetry.
+`job-worker-runtime.ts` is intentionally tiny: it registers the `job_report` tool. Child-process nested jobs remain blocked by the jobs extension's existing `PI_CHILD_TYPE` guard, so children cannot recursively spawn more supervised workers through this runtime. The parent still passes `PI_JOB_ID`, `PI_JOB_ATTEMPT_ID`, `PI_JOB_REPORT_PATH`, and `PI_JOB_EVENTS_PATH` so the child can submit its structured report and telemetry.
 
 `worker-runner.ts` remains responsible for stdout/stderr artifacts, `worker-events.jsonl` telemetry extraction, terminal-state interpretation, post-exit drain/kill timers, and process aborts. Worker prompts still instruct agents to avoid huge dumps and use targeted reads, grep/search, offsets, and durable artifact notes instead of repeatedly loading huge files into context.
 

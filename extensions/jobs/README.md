@@ -66,7 +66,7 @@ type JobsPlanInput = {
 - There is no hidden default concurrency cap. If `concurrency` is omitted, the supervisor starts all supplied leaf jobs concurrently (`jobs.length` or `matrix.length`).
 - Set `concurrency: N` only when you want an explicit local cap for that batch.
 - Dynamic throttling is opt-in: set `throttle: { enabled: true, ... }` to let the supervisor reduce/recover concurrency after transient provider/session failures. When `throttle` is omitted, the supervisor does not auto-throttle.
-- Agent-driven waves are preferred: split a large job into multiple `jobs_plan` calls when you want phases, dependency boundaries, or manual provider load control.
+- Agent-driven waves are preferred: split a large job into multiple `jobs_plan` calls when you want phases, dependency boundaries, or manual provider load control. For large batches, default to explicit waves of about 4-6 jobs unless the user asks for full concurrency.
 
 ### `jobs_plan` template rules
 
@@ -106,16 +106,17 @@ Submit a structured job report with changed files, evidence, and blockers.
 
 ## Completion protocol
 
-A worker must submit:
+A worker should leave durable evidence:
 
-- a non-empty `worker.md` for human-readable notes;
-- a structured report via the child-only `job_report` tool, or fallback `job-report.json`.
+- a non-empty `worker.md` for human-readable notes when useful;
+- a structured report via the child-only `job_report` tool, or fallback `job-report.json`, when practical;
+- visible terminal completion text when no acceptance contract is present and no completed report was submitted.
 
-The supervisor trusts the structured report, not natural language claims or legacy `JOB_STATUS` markers. Thinking-only final turns and missing reports are `worker_incomplete` and parent-retryable when no valid report was produced.
+The report policy is: with acceptance, a report is optional audit evidence; without acceptance, success requires either a valid completed report or a visible terminal completion signal. The supervisor trusts structured reports and acceptance evidence over natural language claims or legacy `JOB_STATUS` markers. Thinking-only final turns with no report and no acceptance pass are `worker_incomplete` and parent-retryable.
 
 ## Worker child sessions
 
-Each worker attempt launches a full child Pi process: `pi --mode json -p --session <attemptDir>/session.jsonl --no-extensions --extension job-worker-runtime.ts`. The child owns its own session and Pi auto-compaction boundary; the parent does not mutate child context. The parent supervises stdout JSONL events, write telemetry, process lifecycle, and artifacts, while the small worker runtime extension only exposes `job_report`. Worker prompts still tell agents to avoid huge dumps and prefer targeted reads/greps plus durable notes to files.
+Each worker attempt launches a full child Pi process: `pi --mode json -p --session <attemptDir>/session.jsonl --extension job-worker-runtime.ts`. The child owns its own session and Pi auto-compaction boundary; the parent does not mutate child context. The parent supervises stdout JSONL events, write telemetry, process lifecycle, and artifacts, while the small worker runtime extension exposes `job_report`. Nested child-process jobs remain blocked by the jobs extension's existing `PI_CHILD_TYPE` guard. Worker prompts still tell agents to avoid huge dumps and prefer targeted reads/greps plus durable notes to files.
 
 ## Acceptance contracts
 
@@ -167,6 +168,14 @@ jobs({
 `summary.md` is the quickest human entry point after a run. When `jobs_plan` ran the batch, `plan.json` records the matrix, templates, jobNames, and optional experimental synthesis metadata that produced it.
 
 Treat `.pi/jobs/**` as a sensitive local audit directory. It can contain full worker prompts, system prompt fragments, child `session.jsonl` transcripts, stdout/stderr, file paths, and structured reports. Do not publish or attach it wholesale without reviewing/redacting it first.
+
+## Settings UI
+
+Use `/jobs-settings` to inspect or update the focused policy controls:
+
+- report policy: fixed default, with acceptance report is optional audit evidence; without acceptance require report or visible terminal completion;
+- jobs_plan wave guidance: default enabled, about 4-6 jobs per explicit wave for large batches;
+- sync-first guidance: default enabled, keeps the extension oriented around blocking parent-tool runs and avoids scheduler/background/steer/resume complexity.
 
 ## Artifact UI
 

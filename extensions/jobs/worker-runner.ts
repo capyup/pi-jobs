@@ -50,6 +50,7 @@ export interface RunWorkerAttemptInput {
   terminalExitGraceMs?: number;
   postExitGraceMs?: number;
   onActivity?: (activity: JobActivityItem) => void | Promise<void>;
+  extraExtensions?: string[];
 }
 
 function tail(text: string, max = 4000): string {
@@ -134,7 +135,12 @@ export async function runWorkerAttempt(input: RunWorkerAttemptInput): Promise<At
   );
   await fs.writeFile(workerEventsPath, "", "utf-8");
 
-  const args = ["--no-extensions", "--extension", JOB_WORKER_RUNTIME_ENTRYPOINT, "--mode", "json", "-p", "--session", sessionPath];
+  const args = ["--extension", JOB_WORKER_RUNTIME_ENTRYPOINT, "--mode", "json", "-p", "--session", sessionPath];
+  if (input.extraExtensions) {
+    for (const ext of input.extraExtensions) {
+      args.push("--extension", ext);
+    }
+  }
   if (input.fallbackModel) args.push("--model", input.fallbackModel);
   if (input.fallbackThinking) args.push("--thinking", input.fallbackThinking);
   args.push("--append-system-prompt", systemPromptPath, `@${workerPromptPath}`);
