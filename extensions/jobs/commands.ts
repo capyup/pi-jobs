@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { cleanJobsArtifacts, formatCleanResult } from "./clean.ts";
 import { renderPromptFile } from "./prompt-loader.ts";
 import { DEFAULT_JOBS_SETTINGS, formatJobsSettings, formatReportPolicy, formatWaveGuidance, loadJobsSettings, saveJobsSettings, type JobsSettings } from "./settings.ts";
 
@@ -70,6 +71,20 @@ export function registerJobsSettingsCommand(pi: ExtensionAPI): void {
 
       if (choice !== choices[0]) saveJobsSettings(ctx.cwd, settings);
       ctx.ui.notify(formatJobsSettings(settings), "info");
+    },
+  });
+}
+
+export function registerJobsCleanCommand(pi: ExtensionAPI): void {
+  pi.registerCommand("jobs-clean", {
+    description: "Delete all supervised job artifacts under <cwd>/.pi/jobs/ (preserves jobs-settings.json)",
+    handler: async (_args, ctx) => {
+      try {
+        const result = await cleanJobsArtifacts(ctx.cwd);
+        ctx.ui.notify(formatCleanResult(result), "info");
+      } catch (error) {
+        ctx.ui.notify(`jobs-clean failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+      }
     },
   });
 }

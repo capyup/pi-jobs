@@ -57,7 +57,7 @@ test("deriveFinalOutcome separates protocol and acceptance gates", () => {
   assert.equal(acceptance.retryDecision.retryability, "not_retryable");
 });
 
-test("deriveFinalOutcome treats report as optional audit evidence when acceptance passed", () => {
+test("deriveFinalOutcome treats structured reports as optional when visible final text exists", () => {
   const outcome = deriveFinalOutcome({
     runtime: runtimeSuccess,
     workerReport: emptyWorkerReport("not_submitted"),
@@ -70,12 +70,12 @@ test("deriveFinalOutcome treats report as optional audit evidence when acceptanc
   assert.equal(outcome.failureKind, "none");
 });
 
-test("deriveFinalOutcome requires report or visible terminal completion when acceptance is absent", () => {
+test("deriveFinalOutcome requires visible final text even when report and acceptance pass", () => {
   const outcome = deriveFinalOutcome({
     runtime: { status: "success", exitCode: 0, sawTerminalAssistantMessage: false },
-    workerReport: emptyWorkerReport("not_submitted"),
-    protocolKind: "worker_incomplete",
-    acceptance: emptyAcceptance("skipped"),
+    workerReport: completedReport,
+    protocolKind: "none",
+    acceptance: passedAcceptance,
   });
 
   assert.equal(outcome.finalStatus, "error");

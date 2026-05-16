@@ -12,6 +12,7 @@
     "For large batches, split work into explicit jobs_plan waves of about {{waveMin}}-{{waveMax}} jobs unless the user asks for full concurrency.",
     "Do not add concurrency unless you intentionally want to cap this batch; omitted concurrency means all supplied jobs in that wave run concurrently.",
     "Give every job a clear name and prompt; use acceptance contracts for required files, regexes, and write boundaries.",
+    "Set each job.timeoutMs to about 2x the expected work duration. If omitted, the default is 10 minutes (600000 ms); values clamp to 15 seconds..24 hours.",
     "The root agent remains responsible for synthesis and for reading batch artifacts when needed."
   ]
 }

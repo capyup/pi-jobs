@@ -20,6 +20,7 @@ export interface JobsPlanRow {
 	id: string;
 	name?: string;
 	cwd?: string;
+	timeoutMs?: number;
 	vars?: Record<string, string | string[]>;
 }
 
@@ -37,6 +38,7 @@ export interface JobsPlanInput {
 	cwdTemplate?: string;
 	acceptanceTemplate?: AcceptanceContract;
 	metadataTemplate?: Record<string, string>;
+	timeoutMs?: number;
 	retry?: ParentRetryPolicy;
 	throttle?: ThrottlePolicy;
 	acceptanceDefaults?: AcceptanceContract;
@@ -63,6 +65,7 @@ const ALLOWED_PLAN_KEYS = new Set([
 	"cwdTemplate",
 	"acceptanceTemplate",
 	"metadataTemplate",
+	"timeoutMs",
 	"retry",
 	"throttle",
 	"acceptanceDefaults",
@@ -70,7 +73,7 @@ const ALLOWED_PLAN_KEYS = new Set([
 	"parentBatchId",
 	"rerunOfJobIds",
 ]);
-const ALLOWED_ROW_KEYS = new Set(["id", "name", "cwd", "vars"]);
+const ALLOWED_ROW_KEYS = new Set(["id", "name", "cwd", "timeoutMs", "vars"]);
 
 type Ctx = Record<string, string | string[]>;
 
@@ -261,6 +264,8 @@ export function expandJobsPlan(input: JobsPlanInput): ExpandedJobsPlan {
 		const metadata = expandMetadata(input, ctx, rowId);
 		const job: JobSpecInput = { id: rowId, name, prompt };
 		if (cwd !== undefined) job.cwd = cwd;
+		if (row.timeoutMs !== undefined) job.timeoutMs = row.timeoutMs;
+		else if (input.timeoutMs !== undefined) job.timeoutMs = input.timeoutMs;
 		if (acceptance) job.acceptance = acceptance;
 		if (metadata) job.metadata = metadata;
 		jobs.push(job);
@@ -290,6 +295,7 @@ export interface PlanArtifactPayload {
 	cwdTemplate?: string;
 	acceptanceTemplate?: AcceptanceContract;
 	metadataTemplate?: Record<string, string>;
+	timeoutMs?: number;
 	matrix: JobsPlanRow[];
 	synthesis?: JobsPlanSynthesis;
 }
@@ -308,6 +314,7 @@ export async function writePlanArtifact(batchDir: string, batchId: string, input
 		cwdTemplate: input.cwdTemplate,
 		acceptanceTemplate: input.acceptanceTemplate,
 		metadataTemplate: input.metadataTemplate,
+		timeoutMs: input.timeoutMs,
 		matrix: input.matrix,
 		synthesis: input.synthesis,
 	};

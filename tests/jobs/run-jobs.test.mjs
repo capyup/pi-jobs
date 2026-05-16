@@ -14,6 +14,29 @@ import {
   MAX_INLINE_JOBS,
   MAX_INLINE_PROMPT_BYTES,
 } from "../../extensions/jobs/run-jobs.ts";
+import {
+  DEFAULT_JOB_TIMEOUT_MS,
+  MAX_JOB_TIMEOUT_MS,
+  MIN_JOB_TIMEOUT_MS,
+  normalizeJobTimeoutMs,
+} from "../../extensions/jobs/timeout.ts";
+
+// ── timeout normalization ──
+
+test("normalizeJobTimeoutMs defaults invalid and missing values", () => {
+  assert.equal(normalizeJobTimeoutMs(undefined), DEFAULT_JOB_TIMEOUT_MS);
+  assert.equal(normalizeJobTimeoutMs(null), DEFAULT_JOB_TIMEOUT_MS);
+  assert.equal(normalizeJobTimeoutMs("60000"), DEFAULT_JOB_TIMEOUT_MS);
+  assert.equal(normalizeJobTimeoutMs(Number.NaN), DEFAULT_JOB_TIMEOUT_MS);
+  assert.equal(normalizeJobTimeoutMs(Number.POSITIVE_INFINITY), DEFAULT_JOB_TIMEOUT_MS);
+});
+
+test("normalizeJobTimeoutMs clamps min and max values", () => {
+  assert.equal(normalizeJobTimeoutMs(1), MIN_JOB_TIMEOUT_MS);
+  assert.equal(normalizeJobTimeoutMs(MIN_JOB_TIMEOUT_MS - 1), MIN_JOB_TIMEOUT_MS);
+  assert.equal(normalizeJobTimeoutMs(MAX_JOB_TIMEOUT_MS + 1), MAX_JOB_TIMEOUT_MS);
+  assert.equal(normalizeJobTimeoutMs(60_000), 60_000);
+});
 
 // ── mergeAcceptanceContracts ──
 
@@ -322,6 +345,23 @@ test("normalizeJobsRun respects explicit concurrency cap", () => {
 test("normalizeJobsRun clamps concurrency to job count", () => {
   const result = normalizeJobsRun({ jobs: [{ name: "a", prompt: "p" }], concurrency: 5 }, "/tmp");
   assert.strictEqual(result.effectiveConcurrency, 1);
+});
+
+test("normalizeJobsRun assigns finite normalized per-job timeouts", () => {
+  const result = normalizeJobsRun({
+    jobs: [
+      { name: "default", prompt: "p" },
+      { name: "small", prompt: "p", timeoutMs: 1 },
+      { name: "large", prompt: "p", timeoutMs: 999_999_999 },
+      { name: "invalid", prompt: "p", timeoutMs: "oops" },
+    ],
+  }, "/tmp");
+  assert.deepEqual(result.jobs.map((job) => job.timeoutMs), [
+    DEFAULT_JOB_TIMEOUT_MS,
+    MIN_JOB_TIMEOUT_MS,
+    MAX_JOB_TIMEOUT_MS,
+    DEFAULT_JOB_TIMEOUT_MS,
+  ]);
 });
 
 // ── buildResultText ──

@@ -562,6 +562,7 @@ async function settleJob(input: {
       attemptIndex: input.attemptIndex,
       paths,
       signal: input.ctx.signal,
+      timeoutMs: input.job.timeoutMs,
       fallbackModel: input.ctx.model,
       fallbackThinking: input.ctx.thinking,
       extraExtensions: input.extraExtensions,
@@ -731,7 +732,7 @@ export async function executeSupervisedJobs(params: JobsToolParams, ctx: Supervi
           attemptIndex,
           policy: retryPolicy,
           decision: { retryability: lastAttempt.retryability, failureKind: lastAttempt.failureKind, reason: lastAttempt.error ?? lastAttempt.failureKind },
-          validWorkerReport: lastAttempt.workerReport.status !== "not_submitted" && lastAttempt.workerReport.status !== "invalid",
+          sawTerminalAssistantMessage: lastAttempt.runtime.sawTerminalAssistantMessage === true,
         });
         if (!shouldRetry || latest.finalStatus === "success" || latest.finalStatus === "aborted") break;
         const delayMs = computeBackoffMs(retryPolicy, attemptIndex, deps.random);
@@ -782,7 +783,10 @@ export async function executeSupervisedJobs(params: JobsToolParams, ctx: Supervi
     rerunOfJobIds: params.rerunOfJobIds,
   };
   await writeBatchArtifact(batch, finalBatch);
-  await writeSummaryMarkdown(batch.summaryPath, finalBatch, jobResults, params);
+  await writeSummaryMarkdown(batch.summaryPath, finalBatch, jobResults, {
+    ...params,
+    jobs: params.jobs.map((job, index) => ({ ...job, timeoutMs: normalized.jobs[index]?.timeoutMs ?? job.timeoutMs })),
+  });
   await appendBatchEvent(batch.eventsPath, { schemaVersion: 1, seq: nextSeq(), at: finishedAt, type: "batch_finished", batchId: batch.batchId, status, data: { auditIntegrity: "ok" } });
 
   return {

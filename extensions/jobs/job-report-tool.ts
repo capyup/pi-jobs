@@ -3,8 +3,10 @@ import * as path from "node:path";
 import type { JobReport } from "./types.ts";
 import { validateJobReport } from "./worker-protocol.ts";
 
-export interface SubmitJobReportInput extends Omit<JobReport, "schemaVersion"> {
+export interface SubmitJobReportInput extends Omit<JobReport, "schemaVersion" | "deliverables" | "evidence"> {
   schemaVersion?: 1;
+  deliverables?: JobReport["deliverables"];
+  evidence?: JobReport["evidence"];
 }
 
 export interface SubmitJobReportResult {
@@ -20,13 +22,14 @@ export function getJobReportPath(env: NodeJS.ProcessEnv = process.env): string |
 export async function submitJobReport(input: SubmitJobReportInput, env: NodeJS.ProcessEnv = process.env): Promise<SubmitJobReportResult> {
   const reportPath = getJobReportPath(env);
   if (!reportPath) return { reportPath: "", ok: false, errors: ["PI_JOB_REPORT_PATH is not set"] };
-  const report = { ...input, schemaVersion: 1 } as JobReport;
+  const report = { ...input, schemaVersion: 1 };
   const expectedJobId = env.PI_JOB_ID ?? report.jobId;
   const expectedAttemptId = env.PI_JOB_ATTEMPT_ID ?? report.attemptId;
   const validation = validateJobReport(report, { jobId: expectedJobId, attemptId: expectedAttemptId });
   if (!validation.ok) return { reportPath, ok: false, errors: validation.errors };
+  const normalizedReport = validation.report as JobReport;
   await fs.mkdir(path.dirname(reportPath), { recursive: true });
-  await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf-8");
+  await fs.writeFile(reportPath, `${JSON.stringify(normalizedReport, null, 2)}\n`, "utf-8");
   return { reportPath, ok: true, errors: [] };
 }
 
@@ -60,10 +63,10 @@ export function buildJobReportToolDefinition() {
   return {
     name: "job_report",
     label: "Job Report",
-    description: "Submit the final structured job report to the parent job supervisor.",
+    description: "Submit an optional structured job report to the parent job supervisor for compatibility or audit.",
     parameters: {
       type: "object",
-      required: ["jobId", "attemptId", "status", "summary", "deliverables", "evidence"],
+      required: ["jobId", "attemptId", "status", "summary"],
       properties: {
         jobId: { type: "string" },
         attemptId: { type: "string" },

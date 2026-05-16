@@ -153,6 +153,7 @@ export function buildQueuedJobArtifact(input: {
     name: input.job.name,
     prompt: input.job.prompt,
     cwd: input.job.cwd,
+    timeoutMs: input.job.timeoutMs,
     status: "queued",
     finalStatus: null,
     failureKind: "none",

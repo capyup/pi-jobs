@@ -41,11 +41,11 @@ export function shouldRetryAttempt(input: {
   attemptIndex: number;
   policy: NormalizedRetryPolicy;
   decision: RetryDecision;
-  validWorkerReport: boolean;
+  sawTerminalAssistantMessage: boolean;
 }): boolean {
   if (input.attemptIndex >= input.policy.maxAttempts) return false;
   if (input.decision.retryability !== "retryable") return false;
   if (!input.policy.retryOn.includes(input.decision.failureKind)) return false;
-  if (input.validWorkerReport) return false;
+  if (input.sawTerminalAssistantMessage) return false;
   return true;
 }

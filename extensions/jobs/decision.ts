@@ -33,10 +33,8 @@ function blockingGateFor(input: DeriveFinalOutcomeInput): BlockingGate {
   if (input.runtime.status === "aborted" || input.runtime.status !== "success") return "runtime";
   if (input.acceptance.status === "failed" || input.acceptance.status === "pending") return "acceptance";
   if (input.workerReport.status === "blocked" || input.workerReport.status === "error") return "protocol";
-  const hasAcceptanceGate = input.acceptance.status === "passed" || input.acceptance.status === "warning";
-  const hasCompletedReport = input.workerReport.status === "completed";
-  const hasVisibleTerminal = input.runtime.sawTerminalAssistantMessage !== false;
-  if (!hasAcceptanceGate && !hasCompletedReport && !hasVisibleTerminal) return "protocol";
+  const hasVisibleTerminal = input.runtime.sawTerminalAssistantMessage === true;
+  if (!hasVisibleTerminal) return "protocol";
   if (input.auditIntegrity !== undefined && input.auditIntegrity !== "ok") return "audit";
   return "none";
 }

@@ -8,7 +8,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { registerJobsSettingsCommand, registerJobsStartCommand } from "./commands.ts";
+import { registerJobsCleanCommand, registerJobsSettingsCommand, registerJobsStartCommand } from "./commands.ts";
 import { buildRerunParamsFromBatchDir, isRerunFilter, RERUN_FILTERS } from "./rerun.ts";
 import { buildResultText, enforceInlineJobsLimit, validateJobsFanoutUsage } from "./run-jobs.ts";
 import { executeSupervisedJobs, renderColoredFromText, type SupervisedJobsResult } from "./supervisor.ts";
@@ -73,6 +73,7 @@ const JobItemSchema = Type.Object({
   name: Type.String({ description: "Human-readable job name" }),
   prompt: Type.String({ description: "Job prompt for this supervised worker" }),
   cwd: Type.Optional(Type.String({ description: "Optional working directory override" })),
+  timeoutMs: Type.Optional(Type.Number({ description: "Hard timeout in milliseconds for this worker. Default 600000; clamped to 15000..86400000; invalid values use the default." })),
   acceptance: Type.Optional(AcceptanceSchema),
   metadata: Type.Optional(MetadataSchema),
 });
@@ -81,6 +82,7 @@ const JobParams = Type.Object({
   name: Type.String({ description: "Human-readable job name" }),
   prompt: Type.String({ description: "Job prompt for this supervised worker" }),
   cwd: Type.Optional(Type.String({ description: "Optional working directory override" })),
+  timeoutMs: Type.Optional(Type.Number({ description: "Hard timeout in milliseconds for this worker. Default 600000; clamped to 15000..86400000; invalid values use the default." })),
   acceptance: Type.Optional(AcceptanceSchema),
   metadata: Type.Optional(MetadataSchema),
   concurrency: Type.Optional(Type.Number({ description: "Explicit concurrency cap. When omitted, the supervisor applies no hidden cap and runs all supplied jobs concurrently." })),
@@ -104,6 +106,7 @@ const JobsPlanRowSchema = Type.Object({
   id: Type.String({ description: "Stable, unique row id within the batch (matches the supervised job id). Use [A-Za-z0-9._-]." }),
   name: Type.Optional(Type.String({ description: "Optional job name override (default: '{{batchName}} {{id}}' or nameTemplate)." })),
   cwd: Type.Optional(Type.String({ description: "Optional cwd override for this row (default: cwdTemplate or context cwd)." })),
+  timeoutMs: Type.Optional(Type.Number({ description: "Optional row hard timeout override in milliseconds. Default/top-level value is clamped to 15000..86400000; invalid values use the default." })),
   vars: Type.Optional(Type.Record(Type.String(), PlanRowVarSchema, { description: "Per-row template variables. Strings substitute directly; arrays join with newlines in string fields and splat when the entry is exactly {{key}} in array fields." })),
 });
 
@@ -116,6 +119,7 @@ const JobsPlanParams = Type.Object({
   cwdTemplate: Type.Optional(Type.String({ description: "Optional cwd template (default: row.cwd or supervisor cwd)." })),
   acceptanceTemplate: Type.Optional(AcceptanceSchema),
   metadataTemplate: Type.Optional(MetadataSchema),
+  timeoutMs: Type.Optional(Type.Number({ description: "Hard timeout in milliseconds applied to every matrix row unless row.timeoutMs overrides it. Default 600000; clamped to 15000..86400000; invalid values use the default." })),
   retry: Type.Optional(RetrySchema),
   throttle: Type.Optional(ThrottleSchema),
   acceptanceDefaults: Type.Optional(AcceptanceSchema),
@@ -265,6 +269,7 @@ export default function jobExtension(pi: ExtensionAPI) {
 
   registerJobsStartCommand(pi);
   registerJobsSettingsCommand(pi);
+  registerJobsCleanCommand(pi);
 
   pi.registerCommand("jobs-ui", {
     description: "Show supervised job batch artifacts or prepare rerun payloads",
@@ -292,8 +297,8 @@ export default function jobExtension(pi: ExtensionAPI) {
     ...jobPromptText,
     parameters: JobParams,
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
-      const { name, prompt, cwd, acceptance, metadata, concurrency, retry, throttle } = params as any;
-      return runJobs(pi, { jobs: [{ name, prompt, cwd, acceptance, metadata }], concurrency, retry, throttle }, signal, onUpdate, ctx, "job");
+      const { name, prompt, cwd, timeoutMs, acceptance, metadata, concurrency, retry, throttle } = params as any;
+      return runJobs(pi, { jobs: [{ name, prompt, cwd, timeoutMs, acceptance, metadata }], concurrency, retry, throttle }, signal, onUpdate, ctx, "job");
     },
     renderCall(args, theme) {
       return new Text(`${theme.fg("toolTitle", theme.bold("job "))}${theme.fg("accent", String((args as any).name ?? "job"))}`, 0, 0);

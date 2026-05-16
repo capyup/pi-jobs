@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-export const REPORT_POLICY_ID = "acceptance_optional_report_else_report_or_visible_terminal" as const;
+export const REPORT_POLICY_ID = "visible_plain_text_final_summary" as const;
 export interface WorkerExtensionsSettings {
   include: string[];
 }
@@ -96,7 +96,7 @@ export function saveJobsSettings(cwd: string, settings: JobsSettings): void {
 }
 
 export function formatReportPolicy(): string {
-  return "with acceptance, report is optional audit evidence; without acceptance, require either a valid report or visible terminal completion";
+  return "require a visible plain-text final assistant summary; structured reports/deliverables/evidence are optional compatibility or audit artifacts, and acceptance contracts provide explicit checks when needed";
 }
 
 export function formatWaveGuidance(settings: JobsSettings): string {

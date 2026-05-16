@@ -10,6 +10,7 @@ Root-only supervised job workers for pi.
 - `job` launches one isolated supervised job worker.
 - `/jobs-start` inserts job-oriented guidance into the editor without triggering an LLM turn.
 - `/jobs-ui` reads batch artifacts, shows failure triage, opens job/attempt details, and prepares rerun payloads.
+- `/jobs-clean` deletes every supervised batch directory under `<cwd>/.pi/jobs/` in one shot and reports how many batches and bytes were freed. It preserves `<cwd>/.pi/jobs-settings.json`. No dry-run, no confirmation, no filters.
 
 ## Prompt files
 
@@ -17,7 +18,7 @@ User-facing guidance, tool descriptions/snippets/guidelines, and worker prompt t
 
 - `jobs-start.md` - `/jobs-start` guidance with report policy and wave guidance placeholders.
 - `tools/*.json` - `job`, `jobs`, and `jobs_plan` descriptions, snippets, and prompt guidelines.
-- `worker-system.md`, `worker-prompt.md`, and `worker-report-example.json` - child worker system prompt, per-job worker prompt template, and report JSON example.
+- `worker-system.md`, `worker-prompt.md`, and `worker-report-example.json` - child worker system prompt, per-job worker prompt template, and optional compatibility report JSON example.
 
 ## Why `jobs_plan` exists
 
@@ -31,6 +32,7 @@ type JobSpecInput = {
   name: string;
   prompt: string;
   cwd?: string;
+  timeoutMs?: number;                    // default 600000, clamped to 15000..86400000
   acceptance?: AcceptanceContract;
   metadata?: Record<string, string>;
 };
@@ -49,6 +51,7 @@ type JobsPlanRow = {
   id: string;                            // unique within batch, [A-Za-z0-9._-]
   name?: string;                         // overrides nameTemplate
   cwd?: string;                          // overrides cwdTemplate
+  timeoutMs?: number;                    // overrides top-level timeoutMs
   vars?: Record<string, string | string[]>;
 };
 
@@ -61,6 +64,7 @@ type JobsPlanInput = {
   cwdTemplate?: string;
   acceptanceTemplate?: AcceptanceContract;
   metadataTemplate?: Record<string, string>;
+  timeoutMs?: number;                    // applied to every row unless row.timeoutMs is set
   retry?: ParentRetryPolicy;
   throttle?: ThrottlePolicy;
   acceptanceDefaults?: AcceptanceContract;
@@ -70,8 +74,11 @@ type JobsPlanInput = {
 };
 ```
 
-## Concurrency semantics
+## Timeout and concurrency semantics
 
+- Every job has a finite hard timeout. Set `timeoutMs` to about 2x expected work duration; omitted or invalid values default to 10 minutes (600000 ms), with a clamp range of 15 seconds..24 hours.
+- In `jobs_plan`, top-level `timeoutMs` applies to every expanded row unless a row provides its own `timeoutMs` override.
+- A timeout terminates only the child worker attempt, first with SIGTERM and then SIGKILL after the abort kill delay; the parent/root agent stays alive and records `worker_stalled`.
 - There is no hidden default concurrency cap. If `concurrency` is omitted, the supervisor starts all supplied leaf jobs concurrently (`jobs.length` or `matrix.length`).
 - Set `concurrency: N` only when you want an explicit local cap for that batch.
 - Dynamic throttling is opt-in: set `throttle: { enabled: true, ... }` to let the supervisor reduce/recover concurrency after transient provider/session failures. When `throttle` is omitted, the supervisor does not auto-throttle.
@@ -101,13 +108,11 @@ You are the chapter {{chapter}} worker.
 Read: {{report}}
 Edit only files matching:
 {{allowedWritePaths}}
-Submit a structured job report with changed files, evidence, and blockers.
+Finish with a short visible plain-text summary of what changed, where to verify it, and any blockers.
 `,
   acceptanceTemplate: {
-    requiredPaths: ["{{report}}"],
+    requiredPaths: [{ path: "{{report}}", minBytes: 200 }],
     allowedWritePaths: ["{{allowedWritePaths}}"],
-    requireDeliverablesEvidence: true,
-    minReportSummaryChars: 80,
   },
   metadataTemplate: { chapter: "{{chapter}}", report: "{{report}}" },
 });
@@ -115,25 +120,21 @@ Submit a structured job report with changed files, evidence, and blockers.
 
 ## Completion protocol
 
-A worker should leave durable evidence:
+A worker should finish with a short visible plain-text assistant message in natural language. There is no fixed final-report template; useful details can include what changed, how to verify it, files intentionally left untouched, tests run, and caveats.
 
-- a non-empty `worker.md` for human-readable notes when useful;
-- a structured report via the child-only `job_report` tool, or fallback `job-report.json`, when practical;
-- visible terminal completion text when no acceptance contract is present and no completed report was submitted.
-
-The report policy is: with acceptance, a report is optional audit evidence; without acceptance, success requires either a valid completed report or a visible terminal completion signal. The supervisor trusts structured reports and acceptance evidence over natural language claims or legacy `JOB_STATUS` markers. Thinking-only final turns with no report and no acceptance pass are `worker_incomplete` and parent-retryable.
+The report policy is: success requires runtime success, a visible final assistant message, acceptance pass when an acceptance contract exists, and finalized audit artifacts. The child-only `job_report` tool and fallback `job-report.json` remain optional compatibility/audit artifacts, but they do not replace visible final text. Thinking-only final turns and tool-only endings are `worker_incomplete` and parent-retryable.
 
 ## Worker child sessions
 
 Each worker attempt launches a full child Pi process: `pi --mode json -p --session <attemptDir>/session.jsonl --extension job-worker-runtime.ts`. The child owns its own session and Pi auto-compaction boundary; the parent does not mutate child context. The parent supervises stdout JSONL events, write telemetry, process lifecycle, and artifacts, while the small worker runtime extension exposes `job_report`. Nested child-process jobs remain blocked by the jobs extension's existing `PI_CHILD_TYPE` guard. Worker prompts still tell agents to avoid huge dumps and prefer targeted reads/greps plus durable notes to files.
 
-Worker extension loading is configured in `.pi/jobs-settings.json` as a worker-only allowlist. Job agents always load the internal `job-worker-runtime.ts` extension, then only the entries listed in `workerExtensions.include`; the default empty list loads no regular/discovered extensions into job agents. If a worker model needs provider, OAuth, or custom-model support from an extension, add that extension to `workerExtensions.include`. Nested child-process jobs remain blocked by the jobs extension's existing `PI_CHILD_TYPE=job-worker` guard even when the jobs extension is listed.
+Worker extension loading is configured in `.pi/jobs-settings.json` as a worker-only allowlist. Job agents always load the internal `job-worker-runtime.ts` extension, then only the entries listed in `workerExtensions.include`; the default empty list loads no regular/discovered extensions into job agents. If a worker model needs provider, OAuth, custom-model, fetch/search, repo-map, or read-block support from an extension, add that extension or package to `workerExtensions.include`. Entries may be local files, local package directories, npm sources, or git URLs; relative paths that start with `.` resolve from the job call cwd. For example, from `/Users/lucas/Developer/pi-jobs`, `../../Developer/pi-basic-tools` loads the local `@capyup/pi-basic-tools` package manifest. Nested child-process jobs remain blocked by the jobs extension's existing `PI_CHILD_TYPE=job-worker` guard even when the jobs extension is listed.
 
 ## Acceptance contracts
 
 Acceptance can require files, forbid paths, check worker-log/report regexes, validate minimum sizes, and audit changed files against allowed/forbidden write paths. Git diff files and worker telemetry first become normalized `WriteEvidence[]`; `.pi/jobs/**` supervisor artifacts are ignored, exact paths match exactly, trailing slash patterns mean directory prefixes, and `*`/`**` keep glob behavior.
 
-Do not add `JOB_STATUS: completed` (or similar log-marker regexes) as an acceptance requirement: V3 derives completion from the structured `job-report.json` the worker submits, and a missing log marker only produces false negatives. Do not list `job-report.json` or `worker.md` in `requiredPaths`: the supervisor writes those itself in the batch artifact directory, not under the job's cwd. Prefer `requireDeliverablesEvidence: true` and `minReportSummaryChars` to enforce real completion proof.
+Do not add `JOB_STATUS: completed` (or similar log-marker regexes) as an acceptance requirement: completion requires the worker's visible final assistant message, and log markers only produce false negatives. Do not list `job-report.json` or `worker.md` in `requiredPaths`: the supervisor writes those itself in the batch artifact directory, not under the job's cwd. Prefer explicit filesystem checks such as required output paths, minimum sizes, regexes, and write boundaries.
 
 Example:
 
@@ -148,8 +149,6 @@ jobs({
       forbiddenPaths: ["ch05_delivery.md"],
       forbiddenOutputRegex: ["已开始|待执行|TODO"],
       allowedWritePaths: ["Stage9/**"],
-      requireDeliverablesEvidence: true,
-      minReportSummaryChars: 80,
     }
   }]
 });
@@ -192,7 +191,7 @@ Use `/jobs-settings` to inspect or update the focused policy controls. File-only
 }
 ```
 
-- report policy: fixed default, with acceptance report is optional audit evidence; without acceptance require report or visible terminal completion;
+- report policy: fixed default; require a visible plain-text final assistant summary. Structured reports, deliverables, and evidence arrays are optional compatibility/audit artifacts, not default completion gates;
 - jobs_plan wave guidance: default enabled, about 4-6 jobs per explicit wave for large batches;
 - sync-first guidance: default enabled, keeps the extension oriented around blocking parent-tool runs and avoids scheduler/background/steer/resume complexity;
 - worker extensions: worker-only allowlist; job agents load `job-worker-runtime.ts` plus only `workerExtensions.include` entries. The default empty list loads no regular/discovered extensions into job agents, so provider, OAuth, or custom-model extensions required by worker models must be listed here. Nested jobs remain blocked by the `PI_CHILD_TYPE=job-worker` guard even when the jobs extension is allowlisted.
@@ -217,6 +216,6 @@ Batch detail shows failed jobs first with reason, retryability, and artifact ins
 
 Workers should retry recoverable work errors internally and record them in `internalRetries`.
 
-The parent supervisor retries only launch/session/provider/worker-incomplete failures when no valid worker report was produced: `launch_error`, `provider_transient`, `provider_stalled`, `worker_stalled`, and `worker_incomplete` (for example `429`, `5xx`, `overloaded`, `Internal server error`, `terminated`, timeout, connection reset, thinking-only stop, or no job report).
+The parent supervisor retries only launch/session/provider/worker-incomplete failures that did not reach the required visible final assistant text: `launch_error`, `provider_transient`, `provider_stalled`, `worker_stalled`, and `worker_incomplete` (for example `429`, `5xx`, `overloaded`, `Internal server error`, `terminated`, timeout, connection reset, thinking-only stop, or a tool-only final turn).
 
 Acceptance failures, malformed reports, invalid contracts, and user aborts are not parent-retryable by default.

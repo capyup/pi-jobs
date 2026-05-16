@@ -10,4 +10,5 @@ Use `job` / `jobs` / `jobs_plan` narrowly: only when supervised leaf workers are
 - jobs_plan guidance: {{waveGuidance}}.
 - Keep the parent-tool experience synchronous: do not add scheduler, background notification, steer, or resume complexity.
 - Give jobs clear names and acceptance criteria when useful for audit.
+- Set `timeoutMs` to about 2x expected work duration; omitted values default to 10 minutes (600000 ms) and clamp to 15 seconds..24 hours.
 - Do not try to create nested jobs from inside a job worker.

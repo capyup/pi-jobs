@@ -248,6 +248,35 @@ test("runWorkerAttempt drains stdout emitted after terminal SIGTERM before close
   assert.equal(result.stdoutMalformedLines, 1);
 });
 
+test("runWorkerAttempt times out only the worker and classifies it as worker_stalled", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-worker-timeout-"));
+  const signals = [];
+  const result = await runWorkerAttempt({
+    job: { ...makeJob(), timeoutMs: 5 },
+    attemptId: "t001-a1",
+    attemptIndex: 1,
+    paths: makePaths(root),
+    timeoutMs: 5,
+    abortKillDelayMs: 5,
+    spawnImpl: () => {
+      const proc = new EventEmitter();
+      proc.stdout = new EventEmitter();
+      proc.stderr = new EventEmitter();
+      proc.kill = (signal) => {
+        signals.push(signal);
+        if (signal === "SIGKILL") setImmediate(() => proc.emit("close", null));
+        return true;
+      };
+      return proc;
+    },
+  });
+
+  assert.equal(result.status, "error");
+  assert.equal(result.failureKind, "worker_stalled");
+  assert.match(result.error, /timed out after 5 ms/);
+  assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
+});
+
 test("runWorkerAttempt hard-stops aborted workers that ignore SIGTERM", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-worker-abort-hard-stop-"));
   const controller = new AbortController();

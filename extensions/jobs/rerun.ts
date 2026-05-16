@@ -30,6 +30,7 @@ function jobToInput(job: JobArtifact, original?: JobSpecInput): JobSpecInput {
     name: job.name,
     prompt: original?.prompt ?? job.prompt,
     cwd: original?.cwd ?? job.cwd,
+    timeoutMs: original?.timeoutMs ?? job.timeoutMs,
     acceptance: original?.acceptance ?? job.acceptanceContract,
     metadata: { ...(original?.metadata ?? {}), parentJobId: job.jobId },
   };

@@ -1,11 +1,12 @@
 {
-  "description": "Launch one supervised job worker with structured report, acceptance checks, audit artifacts, and strict parent retry boundaries.",
+  "description": "Launch one supervised job worker with visible final-text completion, acceptance checks, audit artifacts, and strict parent retry boundaries.",
   "promptSnippet": "Launch one supervised job worker with a prompt, name, and optional acceptance contract.",
   "promptGuidelines": [
     "Use job narrowly: only when exactly one isolated supervised worker is more useful than direct root-agent work.",
     "Do not use job for ordinary main-quest work the root agent can handle well directly, or when the root agent needs to learn/debug process details directly.",
     "Do not use job to fan out multiple workers; for fan-out call jobs_plan with a matrix and a promptTemplate.",
-    "Provide a clear name, concrete prompt, expected deliverables, and acceptance criteria when possible.",
+    "Provide a clear name, concrete prompt, expected output, and acceptance criteria when possible.",
+    "Set timeoutMs to about 2x the expected work duration. If omitted, the default is 10 minutes (600000 ms); values clamp to 15 seconds..24 hours.",
     "Report policy: {{reportPolicy}}."
   ]
 }

@@ -11,10 +11,11 @@
     "Reference row vars with {{key}} in promptTemplate, nameTemplate, cwdTemplate, acceptanceTemplate, and metadataTemplate.",
     "An array-valued var splats into list fields when the entry is exactly {{key}} (e.g. allowedWritePaths: [\"{{allowedWritePaths}}\"]); inside a string template it joins with newlines.",
     "Set acceptanceTemplate.allowedWritePaths to keep each agent on its own files; rows with disjoint paths can run in parallel.",
-    "Do NOT add `JOB_STATUS: completed` (or similar log-marker regexes) to acceptanceTemplate.requiredRegex / requiredReportRegex / requiredPaths.requiredRegex. Completion is determined by the structured job-report.json the worker submits, not by log markers; requiring such a marker only produces false negatives.",
+    "Set timeoutMs to about 2x the expected row duration, or matrix[].timeoutMs for row overrides. If omitted, the default is 10 minutes (600000 ms); values clamp to 15 seconds..24 hours.",
+    "Do NOT add `JOB_STATUS: completed` (or similar log-marker regexes) to acceptanceTemplate.requiredRegex / requiredReportRegex / requiredPaths.requiredRegex. Completion requires the worker's visible final assistant message, and log markers only produce false negatives.",
     "Do NOT list `job-report.json` or `worker.md` in acceptanceTemplate.requiredPaths - the supervisor writes those itself in the batch artifact directory, and they are not under the job's cwd.",
     "Report policy: {{reportPolicy}}.",
-    "Prefer `requireDeliverablesEvidence: true` and `minReportSummaryChars` in acceptanceTemplate to enforce real completion proof; pair them with `allowedWritePaths` to scope writes per row.",
+    "Prefer explicit required output paths, minimum sizes, regexes, and allowedWritePaths in acceptanceTemplate for concrete checks.",
     "Set synthesis.instructions when the root agent should summarize after the batch finishes."
   ]
 }

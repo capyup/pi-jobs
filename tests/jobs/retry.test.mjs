@@ -7,12 +7,12 @@ import * as path from "node:path";
 import { computeBackoffMs, normalizeRetryPolicy, shouldRetryAttempt } from "../../extensions/jobs/retry.ts";
 import { executeSupervisedJobs } from "../../extensions/jobs/supervisor.ts";
 
-test("retry policy retries only retryable decisions without a valid worker report", () => {
+test("retry policy retries only retryable decisions before visible final text", () => {
   const policy = normalizeRetryPolicy({ maxAttempts: 3, backoffMs: { initial: 100, max: 1000, multiplier: 2, jitter: false } });
-  assert.equal(shouldRetryAttempt({ attemptIndex: 1, policy, decision: { retryability: "retryable", failureKind: "provider_transient", reason: "429" }, validWorkerReport: false }), true);
-  assert.equal(shouldRetryAttempt({ attemptIndex: 3, policy, decision: { retryability: "retryable", failureKind: "provider_transient", reason: "429" }, validWorkerReport: false }), false);
-  assert.equal(shouldRetryAttempt({ attemptIndex: 1, policy, decision: { retryability: "not_retryable", failureKind: "acceptance_failed", reason: "bad" }, validWorkerReport: false }), false);
-  assert.equal(shouldRetryAttempt({ attemptIndex: 1, policy, decision: { retryability: "retryable", failureKind: "provider_transient", reason: "429" }, validWorkerReport: true }), false);
+  assert.equal(shouldRetryAttempt({ attemptIndex: 1, policy, decision: { retryability: "retryable", failureKind: "provider_transient", reason: "429" }, sawTerminalAssistantMessage: false }), true);
+  assert.equal(shouldRetryAttempt({ attemptIndex: 3, policy, decision: { retryability: "retryable", failureKind: "provider_transient", reason: "429" }, sawTerminalAssistantMessage: false }), false);
+  assert.equal(shouldRetryAttempt({ attemptIndex: 1, policy, decision: { retryability: "not_retryable", failureKind: "acceptance_failed", reason: "bad" }, sawTerminalAssistantMessage: false }), false);
+  assert.equal(shouldRetryAttempt({ attemptIndex: 1, policy, decision: { retryability: "retryable", failureKind: "provider_transient", reason: "429" }, sawTerminalAssistantMessage: true }), false);
 });
 
 test("computeBackoffMs applies multiplier and max without jitter", () => {

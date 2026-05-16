@@ -1,6 +1,6 @@
 {
   "name": "@capyup/pi-jobs",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "type": "module",
   "description": "Supervised job runtime extension for pi with isolated workers, audit artifacts, and retry-aware orchestration.",
   "keywords": [

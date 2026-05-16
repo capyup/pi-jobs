@@ -14,14 +14,14 @@ test("submitJobReport writes a validated report to PI_JOB_REPORT_PATH", async ()
     attemptId: "t001-a1",
     status: "completed",
     summary: "Done",
-    deliverables: [],
-    evidence: [],
   }, { PI_JOB_REPORT_PATH: reportPath });
 
   assert.equal(result.ok, true);
   const report = JSON.parse(await fs.readFile(reportPath, "utf-8"));
   assert.equal(report.schemaVersion, 1);
   assert.equal(report.status, "completed");
+  assert.deepEqual(report.deliverables, []);
+  assert.deepEqual(report.evidence, []);
 });
 
 test("submitJobReport rejects ids that do not match supervisor environment", async () => {
@@ -57,11 +57,29 @@ test("submitJobReport rejects invalid reports before writing", async () => {
   await assert.rejects(() => fs.stat(reportPath));
 });
 
-test("buildJobReportToolDefinition exposes required report fields", () => {
+test("submitJobReport rejects malformed provided evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-job-report-bad-evidence-"));
+  const reportPath = path.join(root, "job-report.json");
+  const result = await submitJobReport({
+    jobId: "t001",
+    attemptId: "t001-a1",
+    status: "completed",
+    summary: "Done",
+    evidence: [{ kind: "file", value: "" }],
+  }, { PI_JOB_REPORT_PATH: reportPath });
+
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /evidence\[0\]\.value/);
+  await assert.rejects(() => fs.stat(reportPath));
+});
+
+test("buildJobReportToolDefinition keeps deliverables and evidence optional", () => {
   const definition = buildJobReportToolDefinition();
   assert.equal(definition.name, "job_report");
   assert.ok(definition.parameters.required.includes("jobId"));
   assert.ok(definition.parameters.required.includes("status"));
+  assert.ok(!definition.parameters.required.includes("deliverables"));
+  assert.ok(!definition.parameters.required.includes("evidence"));
   assert.equal(definition.parameters.properties.deliverables.items.type, "object");
   assert.equal(definition.parameters.properties.evidence.items.type, "object");
   assert.equal(definition.parameters.properties.internalRetries.items.type, "object");

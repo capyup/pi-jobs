@@ -4,6 +4,31 @@ All notable changes to the `pi-jobs` supervised job runtime extension.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-15
+
+### Added
+- `/jobs-clean` slash command that deletes every supervised batch directory under `<cwd>/.pi/jobs/` in one shot and reports how many batches and bytes were freed. Preserves `<cwd>/.pi/jobs-settings.json`. No dry-run, confirmation, or filters.
+
+### Changed
+- Expanded the recommended project-local worker allowlist to include Exa research, RTK output compression, Codex image tools, auto-compact, and advisor support alongside provider and basic tools.
+- Documented the full installed package inventory classification for deciding which packages are safe or useful for job workers.
+
+## [0.4.0] - 2026-05-15
+
+### Added
+- Per-job hard `timeoutMs` support for `job`, `jobs`, and `jobs_plan`, defaulting to 10 minutes and clamped to 15 seconds..24 hours.
+- `jobs_plan.timeoutMs` top-level defaults with row-level `matrix[].timeoutMs` overrides.
+- Worker allowlist documentation for provider extensions and local basic tools such as `../../Developer/pi-basic-tools`.
+
+### Changed
+- Worker completion now requires visible plain-text final assistant output; structured `job_report` artifacts are compatibility/audit-only and no longer replace visible final text.
+- Worker timeout handling terminates only the child worker attempt and records `worker_stalled` without aborting the parent/root agent.
+- Tool prompts and README guidance now tell agents to set `timeoutMs` to about 2x expected work duration.
+
+### Fixed
+- Missing optional `job-report.json` no longer creates noisy warnings or a special no-report failure label.
+- Rerun payloads preserve persisted per-job timeout settings.
+
 ## [0.3.0] - 2026-05-15
 
 ### Added

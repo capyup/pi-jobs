@@ -11,6 +11,7 @@ function job(jobId, name, finalStatus, failureKind = "none", acceptanceContract 
     name,
     prompt: `Prompt ${name}`,
     cwd: "/tmp/project",
+    timeoutMs: 60_000,
     status: finalStatus,
     finalStatus,
     failureKind,
@@ -60,7 +61,17 @@ test("buildRerunParams selects failed jobs and carries parent metadata", () => {
   assert.equal(params.parentBatchId, "batch-1");
   assert.deepEqual(params.rerunOfJobIds, ["t002", "t003"]);
   assert.equal(params.jobs[0].prompt, "Original bad");
+  assert.equal(params.jobs[0].timeoutMs, 60_000);
   assert.deepEqual(params.jobs[0].acceptance.requiredPaths, ["bad.md"]);
+});
+
+test("buildRerunParams lets original params override persisted timeout", () => {
+  const params = buildRerunParams({
+    detail: { batch, jobs: [job("t002", "bad", "error")] },
+    filter: "failed",
+    originalParams: { jobs: [{ name: "bad", prompt: "Original bad", timeoutMs: 120_000 }] },
+  });
+  assert.equal(params.jobs[0].timeoutMs, 120_000);
 });
 
 test("buildRerunParams preserves persisted acceptance contracts when original params are unavailable", () => {

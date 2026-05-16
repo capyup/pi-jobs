@@ -63,10 +63,17 @@ async function failingAttempt(input) {
 test("executeSupervisedJobs writes success batch/job/attempt artifacts", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-supervisor-"));
   await fs.writeFile(path.join(root, "out.md"), "Chapter output", "utf-8");
+  let seenTimeoutMs;
   const result = await executeSupervisedJobs({
-    jobs: [{ name: "demo", prompt: "Do it", acceptance: { requiredPaths: ["out.md"], requiredOutputRegex: ["Verification"] } }],
+    jobs: [{ name: "demo", prompt: "Do it", timeoutMs: 1, acceptance: { requiredPaths: ["out.md"], requiredOutputRegex: ["Verification"] } }],
     concurrency: 1,
-  }, { cwd: root, toolName: "jobs" }, { runAttempt: successAttempt, now: () => "2026-04-26T00:00:02.000Z" });
+  }, { cwd: root, toolName: "jobs" }, {
+    runAttempt: async (input) => {
+      seenTimeoutMs = input.timeoutMs;
+      return successAttempt(input);
+    },
+    now: () => "2026-04-26T00:00:02.000Z",
+  });
 
   assert.equal(result.batch.status, "success");
   assert.equal(result.batch.summary.success, 1);
@@ -76,6 +83,9 @@ test("executeSupervisedJobs writes success batch/job/attempt artifacts", async (
 
   const job = await readJsonFile(path.join(result.batch.batchDir, "jobs", "t001.json"));
   assert.equal(job.finalStatus, "success");
+  assert.equal(seenTimeoutMs, 15_000);
+  assert.equal(job.timeoutMs, 15_000);
+  assert.equal(job.attempts[0].timeoutMs, 15_000);
   assert.equal(job.workerReport.status, "completed");
   assert.equal(job.acceptance.status, "passed");
   assert.equal(job.attempts.length, 1);
@@ -489,7 +499,7 @@ test("executeSupervisedJobs final result text shows the per-job table with finis
   assert.match(result.text, /rerun failed: \/jobs-ui rerun failed /);
 });
 
-test("executeSupervisedJobs treats missing job report as warning when worker completed", async () => {
+test("executeSupervisedJobs allows missing optional job report when worker completed", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-supervisor-no-report-"));
   const result = await executeSupervisedJobs({
     jobs: [{ id: "ch09_ch10", name: "Content QA MICRO102 ch09-ch10", prompt: "do" }],
@@ -519,7 +529,8 @@ test("executeSupervisedJobs treats missing job report as warning when worker com
 
   assert.equal(result.batch.status, "success");
   assert.equal(result.jobs[0].failureKind, "none");
-  assert.match(result.jobs[0].workerReport.warnings.join("\n"), /No job report submitted/);
+  assert.equal(result.jobs[0].workerReport.status, "not_submitted");
+  assert.deepEqual(result.jobs[0].workerReport.warnings, []);
   assert.match(result.text, /✓\s+ch09_ch10/);
   assert.equal(result.jobs[0].retryability, "not_retryable");
 });
@@ -553,7 +564,8 @@ test("executeSupervisedJobs fails exit-0 workers that produce no terminal event 
   assert.equal(result.batch.status, "error");
   assert.equal(result.jobs[0].finalStatus, "error");
   assert.equal(result.jobs[0].failureKind, "worker_incomplete");
-  assert.match(result.jobs[0].workerReport.warnings.join("\n"), /No job report submitted/);
+  assert.equal(result.jobs[0].workerReport.status, "not_submitted");
+  assert.deepEqual(result.jobs[0].workerReport.warnings, []);
 });
 
 test("executeSupervisedJobs live snapshot shows running icon, not stale ✗, while a retry is in flight", async () => {
@@ -596,14 +608,14 @@ test("executeSupervisedJobs live snapshot shows running icon, not stale ✗, whi
   assert.equal(attempts, 2);
   assert.equal(result.batch.status, "success");
   // While attempt 2 was running we must not have shown the previous attempt's
-  // ✗ icon or its 'no job report' / 'thinking-only stop' label.
+  // ✗ icon or worker-incomplete label.
   assert.ok(seenDuringRetry.length > 0, "should emit at least one snapshot during the retry");
   for (const snapshot of seenDuringRetry) {
     assert.equal(snapshot.finalStatus, null, "finalStatus must reset to null while a retry is in flight");
     assert.equal(snapshot.failureKind, "none", "failureKind must reset while a retry is in flight");
     assert.ok(snapshot.icon && snapshot.icon.startsWith("◐"), `expected running icon, got: ${snapshot.icon}`);
     assert.doesNotMatch(snapshot.icon ?? "", /✗/, "must not show ✗ while running a retry");
-    assert.doesNotMatch(snapshot.icon ?? "", /no job report|thinking-only stop|worker incomplete/, "must not echo previous failure reason while running");
+    assert.doesNotMatch(snapshot.icon ?? "", /thinking-only stop|worker incomplete/, "must not echo previous failure reason while running");
   }
 });
 

@@ -23,11 +23,12 @@ Jobs Supervisor V3 treats each job as a supervised worker attempt.
 - Use job workers when the user explicitly requests parallel jobs/agents, when the work would consume lots of context and only final deliverables matter, or for separable research/reporting/audit/review directions.
 - Fan-out is explicit. Prefer `jobs_plan`: a compact `matrix + promptTemplate + acceptanceTemplate` payload that the extension expands locally into N supervised jobs. Inline `jobs` is a small-batch escape hatch (<=4 jobs, <=8000 prompt bytes) and rejects oversized payloads with a pointer to `jobs_plan`.
 - Concurrency is explicit when capped: omitting `concurrency` runs every supplied leaf job concurrently; root agents should split large batches into explicit `jobs_plan` waves of about 4-6 jobs unless the user asks for full concurrency. Dynamic throttling is opt-in via `throttle.enabled: true`.
-- Each worker is a full child `pi --mode json -p --session <attempt>/session.jsonl` process with its own session/compaction boundary; the parent only supervises stdout JSONL, artifacts, and the structured report protocol.
-- Workers handle recoverable work-level errors themselves and should submit `job-report.json` via the child-only `job_report` tool or file fallback when practical.
+- Every job has a finite hard timeout. Set `timeoutMs` to about 2x expected work duration; omitted or invalid values default to 10 minutes (600000 ms), with a clamp range of 15 seconds..24 hours.
+- Each worker is a full child `pi --mode json -p --session <attempt>/session.jsonl` process with its own session/compaction boundary; the parent supervises stdout JSONL, artifacts, visible final assistant text, and optional compatibility reports.
+- Workers handle recoverable work-level errors themselves and finish with a short visible plain-text final summary. Optional `job_report` / `job-report.json` artifacts are kept for compatibility and audit only.
 - Parent retry is reserved for launch/session/provider transient failures and no-signal worker incompletion.
-- `success` requires runtime success, acceptance pass when an acceptance contract exists, either a completed report or visible terminal completion when no acceptance contract exists, and finalized audit artifacts.
-- Legacy `JOB_STATUS` markers are only warning signals; they are not a completion protocol.
+- `success` requires runtime success, a visible final assistant message, acceptance pass when an acceptance contract exists, and finalized audit artifacts.
+- Legacy `JOB_STATUS` markers and structured reports are not completion substitutes.
 
 Batch artifacts live under:
 
@@ -45,23 +46,55 @@ Batch artifacts live under:
 
 ## Settings UI
 
-Use `/jobs-settings` to inspect or update the focused policy controls. File-only settings live in `.pi/jobs-settings.json`:
+Use `/jobs-settings` to inspect the focused policy controls. Persistent project settings live in `.pi/jobs-settings.json` at the repository/workspace root where `job`, `jobs`, or `jobs_plan` is called.
+
+The most important setting is `workerExtensions.include`. Worker processes start with `--no-extensions`, then load the internal `job-worker-runtime.ts`, then load only the entries in this allowlist. This keeps job workers isolated from normal/discovered extensions and prevents accidental tool inheritance. Nested jobs remain blocked by the `PI_CHILD_TYPE=job-worker` guard even if the jobs extension is listed.
+
+Minimal config:
 
 ```json
 {
   "workerExtensions": {
+    "include": []
+  }
+}
+```
+
+Example config for workers that need provider extensions plus local basic tools:
+
+```json
+{
+  "waveGuidance": { "enabled": true, "min": 4, "max": 6 },
+  "syncFirstGuidance": true,
+  "workerExtensions": {
     "include": [
-      "./extensions/provider-oauth.ts",
-      "npm:@example/pi-worker-provider"
+      "https://github.com/lulucatdev/pi-fireworks-provider",
+      "https://github.com/lulucatdev/pi-kimi-coding-plan-provider",
+      "https://github.com/lulucatdev/pi-google-ai-studio-provider.git",
+      "https://github.com/lulucatdev/pi-glm-coding-plan-provider@v0.1.0",
+      "https://github.com/lulucatdev/pi-opencode-go-provider",
+      "https://github.com/lulucatdev/pi-baseten-provider.git",
+      "../../Developer/pi-basic-tools"
     ]
   }
 }
 ```
 
-- report policy: fixed default, with acceptance report is optional audit evidence; without acceptance require report or visible terminal completion;
+`workerExtensions.include` accepts the same source shapes as `pi --extension` / package resolution:
+
+- relative paths starting with `.` resolve from the job call `cwd`; for this repo, `../../Developer/pi-basic-tools` resolves to `/Users/lucas/Developer/pi-basic-tools` when jobs are launched from `/Users/lucas/Developer/pi-jobs`;
+- local extension files such as `./extensions/provider-oauth.ts` load that one file;
+- local package directories such as `../../Developer/pi-basic-tools` load the package's `pi.extensions` manifest entries;
+- npm sources such as `npm:@example/pi-worker-provider` and git URLs such as `https://github.com/org/pi-provider.git` are resolved by pi's package manager.
+
+Setting meanings:
+
+- report policy: fixed default; require a visible plain-text final assistant summary. Structured reports, deliverables, and evidence arrays are optional compatibility/audit artifacts, not default completion gates;
 - jobs_plan wave guidance: default enabled, about 4-6 jobs per explicit wave for large batches;
 - sync-first guidance: default enabled, keeps the extension oriented around blocking parent-tool runs and avoids scheduler/background/steer/resume complexity;
-- worker extensions: worker-only allowlist; job agents load `job-worker-runtime.ts` plus only `workerExtensions.include` entries. The default empty list loads no regular/discovered extensions into job agents, so provider, OAuth, or custom-model extensions required by worker models must be listed here. Nested jobs remain blocked by the `PI_CHILD_TYPE=job-worker` guard even when the jobs extension is allowlisted.
+- worker extensions: worker-only allowlist. The default empty list loads no regular/discovered extensions into job agents, so provider, OAuth, custom-model, search, fetch, repo-map, or read-block support required by worker models must be listed here explicitly.
+
+`timeoutMs` is not a `.pi/jobs-settings.json` setting. It is supplied per `job`, per inline `jobs[]` item, or as top-level / row-level `jobs_plan.timeoutMs`. Omitted or invalid values default to 10 minutes, clamp to 15 seconds..24 hours, and only terminate the child worker attempt on timeout.
 
 ## Artifact UI
 
@@ -80,6 +113,8 @@ Use `/jobs-ui` to navigate persisted artifacts:
 ```
 
 The UI is artifact-first: batch detail groups failures, job detail shows acceptance/report state, attempt detail shows runtime fields, thinking/tool activity, and artifact paths, and rerun preparation preserves parent batch provenance. Live `job` / `jobs` updates also show recent per-job thinking/activity lines while workers run.
+
+Use `/jobs-clean` to delete all supervised job artifacts under `<cwd>/.pi/jobs/` in one shot. It removes every batch directory unconditionally and reports how many batches and bytes were freed. `<cwd>/.pi/jobs-settings.json` is preserved because it holds persistent config, not run artifacts. There is no dry-run, no confirmation, and no filter by status or age — if you need any of those, inspect with `/jobs-ui` first or delete specific paths by hand.
 
 ## Load it in pi
 

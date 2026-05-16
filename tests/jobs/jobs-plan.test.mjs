@@ -7,6 +7,7 @@ import {
   expandJobsPlan,
   validateJobsPlanInput,
 } from "../../extensions/jobs/jobs-plan.ts";
+import { normalizeJobsRun } from "../../extensions/jobs/run-jobs.ts";
 
 function chapterPlan() {
   return {
@@ -158,6 +159,19 @@ test("expandJobsPlan handles PathCheck objects in requiredPaths", () => {
   assert.equal(required.path, "oracle/r/ch01.md");
   assert.equal(required.minBytes, 100);
   assert.deepEqual(required.requiredRegex, ["chapter 01"]);
+});
+
+test("expandJobsPlan applies top-level timeoutMs with row-level overrides", () => {
+  const expanded = expandJobsPlan({
+    batchName: "b",
+    timeoutMs: 60_000,
+    matrix: [{ id: "row1" }, { id: "row2", timeoutMs: 30_000 }],
+    promptTemplate: "go {{id}}",
+  });
+  assert.equal(expanded.params.jobs[0].timeoutMs, 60_000);
+  assert.equal(expanded.params.jobs[1].timeoutMs, 30_000);
+  const normalized = normalizeJobsRun(expanded.params, "/tmp");
+  assert.deepEqual(normalized.jobs.map((job) => job.timeoutMs), [60_000, 30_000]);
 });
 
 test("expandJobsPlan keeps acceptanceDefaults and rerun provenance on the expanded params", () => {

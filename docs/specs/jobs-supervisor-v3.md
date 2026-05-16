@@ -11,8 +11,8 @@ Scope: `extensions/jobs`
 The root process is the supervisor. Each job reaches `success` only when all blocking gates pass:
 
 1. runtime outcome is successful;
-2. if an acceptance contract exists, acceptance checks pass or are warning-only;
-3. if no acceptance contract exists, the worker has either a valid completed `job-report.json` / `job_report` payload or a visible terminal completion signal;
+2. the worker leaves a visible plain-text final assistant message;
+3. if an acceptance contract exists, acceptance checks pass or are warning-only;
 4. batch audit artifacts finalize with `auditIntegrity: "ok"`.
 
 Legacy `JOB_STATUS` markers are only warning signals for old logs. They are not a completion protocol.
@@ -72,9 +72,7 @@ A worker receives exact paths for:
 - `worker.md` — human-readable log;
 - `job-report.json` — machine-readable completion report.
 
-The preferred completion path is the child-only `job_report` tool, which writes the same structured report to the supervised report path. The file protocol remains the fallback.
-
-Required report shape:
+The required completion signal is visible plain-text final assistant text from the worker. The child-only `job_report` tool and `job-report.json` file remain optional compatibility/audit artifacts; when present, they share this structured report shape:
 
 ```ts
 type JobReport = {
@@ -83,15 +81,15 @@ type JobReport = {
   attemptId: string;
   status: "completed" | "partial" | "blocked" | "error";
   summary: string;
-  deliverables: Array<{ path: string; kind: "file" | "dir" | "note" | "command"; description?: string }>;
-  evidence: Array<{ kind: "file" | "command" | "text"; value: string }>;
+  deliverables?: Array<{ path: string; kind: "file" | "dir" | "note" | "command"; description?: string }>;
+  evidence?: Array<{ kind: "file" | "command" | "text"; value: string }>;
   internalRetries?: Array<{ reason: string; action: string; outcome: "recovered" | "failed" }>;
   userActionRequired?: string | null;
   error?: string | null;
 };
 ```
 
-The worker prompt must state clearly that reports are optional audit evidence when acceptance passes, but jobs without acceptance need either a completed report or visible terminal completion text. Thinking-only final turns with no report and no acceptance pass are `worker_incomplete` and are parent-retryable.
+The worker prompt must state clearly that the required completion signal is a short visible plain-text final assistant message with no fixed format. Structured reports, `job-report.json`, deliverables, and evidence arrays are optional compatibility/audit artifacts only, and they do not replace visible final text. Thinking-only final turns and tool-only endings are `worker_incomplete` and are parent-retryable.
 
 ## API
 
@@ -195,9 +193,9 @@ Rules:
 - Each job's git diff is filtered to that job's allowed zone before attribution, so disjoint write-boundary jobs can run in parallel.
 - Worker telemetry is attributed to the emitting job and catches out-of-zone writes even when git diff attribution is ambiguous.
 
-**Do not** add `JOB_STATUS: completed` as an acceptance requirement. **Do not** list `job-report.json` or `worker.md` in `requiredPaths`. Prefer `requireDeliverablesEvidence: true` and `minReportSummaryChars` for completion proof.
+**Do not** add `JOB_STATUS: completed` as an acceptance requirement. **Do not** list `job-report.json` or `worker.md` in `requiredPaths`. Prefer explicit filesystem checks such as required output paths, minimum sizes, regexes, and write boundaries.
 
-Acceptance failure is not parent-retryable by default. It means the worker ran and produced a report, but delivered artifacts did not satisfy the parent-side contract.
+Acceptance failure is not parent-retryable by default. It means the worker ran, left visible final text, and delivered artifacts did not satisfy the parent-side contract.
 
 ## Final Outcome and Retry Boundary
 
@@ -214,7 +212,7 @@ type FinalOutcome = {
 
 Worker agents should handle recoverable work-level errors themselves and record those in `internalRetries`.
 
-The parent supervisor retries only launch/session/provider/worker-incomplete failures that did not produce a valid worker report:
+The parent supervisor retries only launch/session/provider/worker-incomplete failures that did not reach the required visible final assistant text:
 
 - `launch_error`
 - `provider_transient`
@@ -222,7 +220,7 @@ The parent supervisor retries only launch/session/provider/worker-incomplete fai
 - `worker_stalled`
 - `worker_incomplete`
 
-Examples: spawn failure, `429`, `5xx`, `overloaded`, `Internal server error`, `terminated`, connection reset, timeout, thinking-only stop, missing report.
+Examples: spawn failure, `429`, `5xx`, `overloaded`, `Internal server error`, `terminated`, connection reset, timeout, thinking-only stop, or a tool-only final turn.
 
 The parent does not retry by default for:
 

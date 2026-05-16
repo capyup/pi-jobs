@@ -17,6 +17,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function validateDeliverables(value: unknown): { ok: boolean; value: JobDeliverable[]; errors: string[] } {
+  if (value === undefined) return { ok: true, value: [], errors: [] };
   if (!Array.isArray(value)) return { ok: false, value: [], errors: ["deliverables must be an array"] };
   const errors: string[] = [];
   const deliverables: JobDeliverable[] = [];
@@ -35,6 +36,7 @@ function validateDeliverables(value: unknown): { ok: boolean; value: JobDelivera
 }
 
 function validateEvidence(value: unknown): { ok: boolean; value: JobEvidence[]; errors: string[] } {
+  if (value === undefined) return { ok: true, value: [], errors: [] };
   if (!Array.isArray(value)) return { ok: false, value: [], errors: ["evidence must be an array"] };
   const errors: string[] = [];
   const evidence: JobEvidence[] = [];
@@ -95,7 +97,7 @@ export async function readJobReport(reportPath: string, expected?: { jobId?: str
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     if (/ENOENT|no such file/i.test(reason)) {
-      return { ok: false, errors: ["No job report submitted: the worker ended its turn without calling job_report or writing job-report.json"] };
+      return { ok: false, errors: [] };
     }
     if (error instanceof SyntaxError) {
       return { ok: false, errors: [`Job report is not valid JSON: ${reason}`] };
@@ -114,18 +116,13 @@ export function buildWorkerPrompt(input: {
   workerLogPath: string;
   reportPath: string;
 }): string {
-  const reportExampleJson = renderPromptFile("worker-report-example.json", {
-    jobId: input.job.id,
-    attemptId: input.attemptId,
-  });
-
   return renderPromptFile("worker-prompt.md", {
     jobId: input.job.id,
     attemptId: input.attemptId,
     jobName: input.job.name,
+    timeoutMs: String(input.job.timeoutMs),
     workerLogPath: input.workerLogPath,
     reportPath: input.reportPath,
     jobPrompt: input.job.prompt,
-    reportExampleJson,
   });
 }

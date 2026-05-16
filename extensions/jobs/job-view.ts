@@ -41,8 +41,6 @@ export function failureReasonLabel(kind: FailureKind, job?: JobArtifact): string
       return "protocol error";
     }
     case "worker_incomplete": {
-      const errors = job?.workerReport?.errors ?? [];
-      if (errors.some((message) => /No job report submitted|ENOENT.*job-report/i.test(message))) return "no job report";
       const lastAttempt = job?.attempts?.[job.attempts.length - 1];
       if (lastAttempt?.runtime?.stopReason === "thinking_only_stop") return "thinking-only stop";
       return "worker incomplete";

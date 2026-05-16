@@ -38,6 +38,8 @@ export function isProviderTransient(text: string): boolean {
 export function classifyRuntimeFailure(input: RuntimeOutcome & { error?: string | null }): FailureKind {
   if (input.status === "aborted") return "aborted";
   if (input.status === "success") return "none";
+  if (input.failureKind === "worker_stalled") return "worker_stalled";
+  if (input.failureKind === "provider_stalled") return "provider_stalled";
   if (input.failureKind === "launch_error") return "launch_error";
   if (input.failureKind === "worker_incomplete" || input.stopReason === "thinking_only_stop") return "worker_incomplete";
 
@@ -50,12 +52,6 @@ export function classifyRuntimeFailure(input: RuntimeOutcome & { error?: string 
 
 export function classifyProtocolFailure(errors: string[]): FailureKind {
   if (!errors.length) return "none";
-  // Worker that ran cleanly but never submitted a job report is "incomplete" rather
-  // than a hard protocol error: thinking-only stops, hung turns, etc. are typically
-  // transient model behavior, so we want the parent to retry once before giving up.
-  if (errors.some((message) => /No job report submitted|ENOENT|job-report\.json/i.test(message))) {
-    return "worker_incomplete";
-  }
   return "protocol_error";
 }
 

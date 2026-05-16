@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import { generateJobIds } from "./audit-log.ts";
+import { normalizeJobTimeoutMs } from "./timeout.ts";
 import type { AcceptanceContract, NormalizedJobSpec, JobSpecInput, JobsToolParams } from "./types.ts";
 
 export const DEFAULT_MAX_JOBS = 100;
@@ -135,6 +136,7 @@ export function normalizeJobsRun(params: JobsToolParams, defaultCwd: string, max
       name: job.name.trim(),
       prompt: job.prompt,
       cwd: path.resolve(defaultCwd, job.cwd ?? defaultCwd),
+      timeoutMs: normalizeJobTimeoutMs(job.timeoutMs),
       acceptance: mergeAcceptanceContracts(params.acceptanceDefaults, job.acceptance),
       metadata: job.metadata,
     };

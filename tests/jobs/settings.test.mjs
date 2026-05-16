@@ -22,6 +22,7 @@ import {
 // ── DEFAULT_JOBS_SETTINGS ──
 
 test("DEFAULT_JOBS_SETTINGS has correct shape and values", () => {
+  assert.strictEqual(REPORT_POLICY_ID, "visible_plain_text_final_summary");
   assert.strictEqual(DEFAULT_JOBS_SETTINGS.reportPolicy, REPORT_POLICY_ID);
   assert.strictEqual(DEFAULT_JOBS_SETTINGS.waveGuidance.enabled, true);
   assert.strictEqual(DEFAULT_JOBS_SETTINGS.waveGuidance.min, 4);
@@ -203,8 +204,9 @@ test("saveJobsSettings normalizes before writing", async () => {
 
 test("formatReportPolicy returns expected text", () => {
   const policy = formatReportPolicy();
-  assert.ok(policy.includes("with acceptance"));
-  assert.ok(policy.includes("without acceptance"));
+  assert.ok(policy.includes("visible plain-text final assistant summary"));
+  assert.ok(policy.includes("optional compatibility or audit artifacts"));
+  assert.ok(policy.includes("acceptance contracts"));
 });
 
 // ── formatWaveGuidance ──
@@ -249,6 +251,8 @@ test("formatJobsSettings includes all settings lines", () => {
   const text = formatJobsSettings(DEFAULT_JOBS_SETTINGS);
   assert.ok(text.includes("jobs-settings"));
   assert.ok(text.includes("report policy"));
+  assert.ok(text.includes("visible plain-text final assistant summary"));
+  assert.ok(text.includes("optional compatibility or audit artifacts"));
   assert.ok(text.includes("jobs_plan waves"));
   assert.ok(text.includes("sync-first"));
   assert.ok(text.includes("worker extensions"));

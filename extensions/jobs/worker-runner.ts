@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { EventEmitter } from "node:events";
 import type { AttemptPaths } from "./audit-log.ts";
 import { createWorkerActivityState, extractWorkerActivity } from "./thinking-steps.ts";
+import { normalizeJobTimeoutMs } from "./timeout.ts";
 import type { FailureKind, NormalizedJobSpec, RuntimeOutcome, RuntimeStatus, JobActivityItem, JobAttemptRecord } from "./types.ts";
 import { createTerminalRuntimeState, reduceTerminalRuntimeState } from "./terminal-state.ts";
 import { appendWorkerEvent, createStdoutTelemetryState, extractStdoutTelemetry, workerEventsPathForAttempt } from "./worker-events.ts";
@@ -41,6 +42,7 @@ export interface RunWorkerAttemptInput {
   attemptIndex: number;
   paths: AttemptPaths;
   signal?: AbortSignal;
+  timeoutMs?: number;
   piCommand?: string;
   fallbackModel?: string;
   fallbackThinking?: string;
@@ -75,7 +77,11 @@ export async function runWorkerAttempt(input: RunWorkerAttemptInput): Promise<At
   let stderr = "";
   let stdoutBuffer = "";
   let stdoutMalformedLines = 0;
+  const timeoutMs = typeof input.timeoutMs === "number" && Number.isFinite(input.timeoutMs)
+    ? Math.max(1, Math.trunc(input.timeoutMs))
+    : normalizeJobTimeoutMs(input.job.timeoutMs);
   let wasAborted = false;
+  let wasTimedOut = false;
   let spawnError: string | undefined;
   let scheduleTerminalExitGuard = () => {};
   let stdoutWriteQueue = Promise.resolve();
@@ -121,7 +127,7 @@ export async function runWorkerAttempt(input: RunWorkerAttemptInput): Promise<At
   const sessionPath = input.paths.sessionPath ?? path.join(input.paths.attemptDir, "session.jsonl");
   await fs.writeFile(systemPromptPath, buildWorkerSystemPrompt(), "utf-8");
   await fs.writeFile(workerPromptPath, buildWorkerPrompt({
-    job: input.job,
+    job: { ...input.job, timeoutMs },
     attemptId: input.attemptId,
     workerLogPath: input.paths.workerLogPath,
     reportPath: input.paths.reportPath,
@@ -194,6 +200,8 @@ export async function runWorkerAttempt(input: RunWorkerAttemptInput): Promise<At
   const exitCode = await new Promise<number>((resolve) => {
     let settled = false;
     let abortTimer: NodeJS.Timeout | undefined;
+    let timeoutTimer: NodeJS.Timeout | undefined;
+    let timeoutKillTimer: NodeJS.Timeout | undefined;
     let terminalTimer: NodeJS.Timeout | undefined;
     let terminalForceKillTimer: NodeJS.Timeout | undefined;
     let postExitTimer: NodeJS.Timeout | undefined;
@@ -203,6 +211,8 @@ export async function runWorkerAttempt(input: RunWorkerAttemptInput): Promise<At
       if (settled) return;
       settled = true;
       if (abortTimer) clearTimeout(abortTimer);
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (timeoutKillTimer) clearTimeout(timeoutKillTimer);
       if (terminalTimer) clearTimeout(terminalTimer);
       if (terminalForceKillTimer) clearTimeout(terminalForceKillTimer);
       if (postExitTimer) clearTimeout(postExitTimer);
@@ -230,6 +240,7 @@ export async function runWorkerAttempt(input: RunWorkerAttemptInput): Promise<At
     };
 
     const kill = () => {
+      if (wasTimedOut) return;
       wasAborted = true;
       proc.kill("SIGTERM");
       abortTimer = setTimeout(() => {
@@ -238,6 +249,18 @@ export async function runWorkerAttempt(input: RunWorkerAttemptInput): Promise<At
       }, input.abortKillDelayMs ?? 5000);
       abortTimer.unref?.();
     };
+
+    timeoutTimer = setTimeout(() => {
+      if (settled || wasAborted) return;
+      wasTimedOut = true;
+      proc.kill("SIGTERM");
+      timeoutKillTimer = setTimeout(() => {
+        proc.kill("SIGKILL");
+        finish(1);
+      }, input.abortKillDelayMs ?? 5000);
+      timeoutKillTimer.unref?.();
+    }, timeoutMs);
+    timeoutTimer.unref?.();
 
     if (input.signal) {
       if (input.signal.aborted) kill();
@@ -290,7 +313,9 @@ export async function runWorkerAttempt(input: RunWorkerAttemptInput): Promise<At
 
   const finishedAt = new Date().toISOString();
   const { stopReason, errorMessage, sawTerminalAssistantMessage } = terminalState;
-  const status: RuntimeStatus = wasAborted || stopReason === "aborted"
+  const status: RuntimeStatus = wasTimedOut
+    ? "error"
+    : wasAborted || stopReason === "aborted"
     ? "aborted"
     : stopReason === "error" || stopReason === "thinking_only_stop" || errorMessage
       ? "error"
@@ -299,7 +324,9 @@ export async function runWorkerAttempt(input: RunWorkerAttemptInput): Promise<At
         : exitCode === 0
           ? "success"
           : "error";
-  const failureKind: FailureKind = status === "aborted"
+  const failureKind: FailureKind = wasTimedOut
+    ? "worker_stalled"
+    : status === "aborted"
     ? "aborted"
     : status === "success"
       ? "none"
@@ -319,7 +346,7 @@ export async function runWorkerAttempt(input: RunWorkerAttemptInput): Promise<At
     stderrTail: tail(stderr),
     stdoutMalformedLines,
     failureKind,
-    error: errorMessage ?? spawnError ?? (status === "error" ? tail(stderr).trim() || (stopReason === "error" ? "Worker stopped with stopReason=error" : `Worker exited with code ${exitCode}`) : null),
+    error: wasTimedOut ? `Worker timed out after ${timeoutMs} ms.` : errorMessage ?? spawnError ?? (status === "error" ? tail(stderr).trim() || (stopReason === "error" ? "Worker stopped with stopReason=error" : `Worker exited with code ${exitCode}`) : null),
     startedAt,
     finishedAt,
   };
@@ -340,6 +367,7 @@ export function buildAttemptRecord(input: {
     startedAt: input.runtime.startedAt,
     finishedAt: input.runtime.finishedAt,
     cwd: input.job.cwd,
+    timeoutMs: normalizeJobTimeoutMs(input.job.timeoutMs),
     attemptDir: input.paths.attemptDir,
     sessionPath: input.paths.sessionPath,
     workerLogPath: input.paths.workerLogPath,

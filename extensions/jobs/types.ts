@@ -126,6 +126,7 @@ export interface JobAttemptRecord {
   startedAt: string;
   finishedAt: string | null;
   cwd: string;
+  timeoutMs: number;
   attemptDir: string;
   sessionPath?: string;
   workerLogPath: string;
@@ -187,6 +188,7 @@ export interface JobSpecInput {
   name: string;
   prompt: string;
   cwd?: string;
+  timeoutMs?: number;
   acceptance?: AcceptanceContract;
   metadata?: Record<string, string>;
 }
@@ -205,6 +207,7 @@ export interface NormalizedJobSpec extends JobSpecInput {
   id: string;
   cwd: string;
   prompt: string;
+  timeoutMs: number;
   acceptance?: AcceptanceContract;
 }
 
@@ -215,6 +218,7 @@ export interface JobArtifact {
   name: string;
   prompt: string;
   cwd: string;
+  timeoutMs: number;
   status: JobLifecycleStatus;
   finalStatus: JobFinalStatus | null;
   failureKind: FailureKind;
@@ -295,10 +299,8 @@ export function deriveJobFinalStatus(input: DeriveJobStatusInput): JobFinalStatu
   const acceptanceStatus = acceptanceStatusOf(input.acceptance);
   if (acceptanceStatus === "failed" || acceptanceStatus === "pending") return "error";
 
-  const hasAcceptanceGate = acceptanceStatus === "passed" || acceptanceStatus === "warning";
-  const hasVisibleTerminal = typeof input.runtime === "object" && input.runtime.sawTerminalAssistantMessage !== false;
-  const hasValidCompletedReport = workerStatus === "completed";
-  if (!hasAcceptanceGate && !hasValidCompletedReport && !hasVisibleTerminal) return "error";
+  const hasVisibleTerminal = typeof input.runtime === "object" && input.runtime.sawTerminalAssistantMessage === true;
+  if (!hasVisibleTerminal) return "error";
 
   if (input.auditIntegrity !== undefined && input.auditIntegrity !== "ok") return "error";
 
